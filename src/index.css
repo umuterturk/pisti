@@ -1,0 +1,657 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0a1f12;
+  color: #f5f0e6;
+  user-select: none;
+}
+
+.game-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding:
+    env(safe-area-inset-top, 12px)
+    env(safe-area-inset-right, 12px)
+    env(safe-area-inset-bottom, 12px)
+    env(safe-area-inset-left, 12px);
+  background: radial-gradient(ellipse at 50% 40%, #1f5c34 0%, #143d22 55%, #0d2818 100%);
+}
+
+/* Center-left floating HUD: overall match score + actions */
+.side-hud {
+  position: fixed;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+}
+
+.side-hud__match {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-hud__score {
+  font-size: 1.15rem;
+  font-weight: 800;
+  opacity: 0.85;
+}
+
+.side-hud__score--me {
+  color: #ffd54f;
+  opacity: 1;
+}
+
+.side-hud__sep {
+  opacity: 0.5;
+}
+
+.side-hud__label {
+  font-size: 0.6rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.side-hud__btn {
+  margin-top: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.side-hud__btn:active {
+  transform: scale(0.95);
+}
+
+.side-hud__btn--debug {
+  border-color: rgba(255, 213, 79, 0.5);
+  background: rgba(255, 213, 79, 0.16);
+  color: #ffd54f;
+}
+
+/* Compact player HUD (used for both sides) */
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  margin: 0 2px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid transparent;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.hud--active {
+  border-color: rgba(255, 213, 79, 0.6);
+  background: rgba(255, 213, 79, 0.12);
+}
+
+.hud__id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hud__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  background: linear-gradient(135deg, #ffd54f, #f0a500);
+  color: #143a22;
+  flex-shrink: 0;
+}
+
+.hud__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hud__turn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6ee787;
+  box-shadow: 0 0 8px #6ee787;
+}
+
+.hud__stats {
+  display: flex;
+  gap: 4px;
+}
+
+.hud__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 40px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.hud__stat-val {
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__stat-label {
+  font-size: 0.56rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.opponent-wrap {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  /* Clip card tops that rise above the top HUD, so the hand is cropped at the
+     top edge just like the player's hand is cropped at the bottom. */
+  overflow: hidden;
+}
+
+/* Top HUD acts as a tray (mirror of the bottom one): the opponent's cards
+   extend up behind it and off the top of the screen. */
+.hud--top {
+  position: relative;
+  z-index: 110;
+  background: linear-gradient(0deg, rgba(13, 40, 24, 0.82), rgba(9, 30, 18, 0.98));
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.hud--top.hud--active {
+  background: linear-gradient(0deg, rgba(45, 62, 20, 0.85), rgba(30, 44, 12, 0.98));
+}
+
+.opponent-area {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* The cards are anchored to the bottom of a short container and extend upward
+   behind the top HUD tray, so they are cropped by the screen top edge -
+   mirroring the player's hand at the bottom. */
+.opponent-area__hand {
+  position: relative;
+  overflow: visible;
+}
+
+.opponent-area__card {
+  position: absolute;
+  bottom: 0;
+}
+
+.table-area {
+  flex: 1 1 55%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.table-pile {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter 0.15s ease;
+}
+
+.table-pile__stack {
+  position: relative;
+  width: 72px;
+  height: 100px;
+}
+
+.table-pile--highlight {
+  filter: drop-shadow(0 0 16px rgba(255, 215, 80, 0.55));
+  animation: pile-pulse 0.35s ease-out;
+}
+
+@keyframes pile-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.table-pile__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.player-area {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding-bottom: 0;
+  overflow: visible;
+}
+
+/* Bottom HUD acts as a tray: the hand's cropped card bottoms tuck behind it. */
+.hud--bottom {
+  position: relative;
+  z-index: 110;
+  background: linear-gradient(180deg, rgba(13, 40, 24, 0.82), rgba(9, 30, 18, 0.98));
+  box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.hud--bottom.hud--active {
+  background: linear-gradient(180deg, rgba(45, 62, 20, 0.85), rgba(30, 44, 12, 0.98));
+}
+
+.player-hand {
+  width: 100%;
+  height: 150px;
+  position: relative;
+  overflow: visible;
+}
+
+.player-hand__cards {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.hand-card {
+  cursor: grab;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+.hand-card:active {
+  cursor: grabbing;
+}
+
+.card {
+  border-radius: 10px;
+  background: #faf8f2;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.card--back {
+  background: linear-gradient(135deg, #1a3a6e 0%, #0f2347 100%);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.card__back-pattern {
+  position: absolute;
+  inset: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.06) 0px,
+    rgba(255, 255, 255, 0.06) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.card__rank {
+  position: absolute;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.card__rank--tl {
+  top: 6px;
+  left: 7px;
+}
+
+.card__rank--br {
+  bottom: 6px;
+  right: 7px;
+  transform: rotate(180deg);
+}
+
+.card__suit--center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.capture-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 150;
+}
+
+.capture-layer__group {
+  will-change: transform;
+}
+
+.capture-layer__card {
+  will-change: transform;
+}
+
+.capture-layer__pisti {
+  transform: translate(-50%, -50%);
+  font-size: 3.2rem;
+  font-weight: 900;
+  color: #ffd54f;
+  text-shadow:
+    0 0 20px rgba(255, 213, 79, 0.95),
+    0 0 40px rgba(255, 168, 38, 0.6),
+    0 3px 14px rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 160;
+}
+
+.capture-layer__flash {
+  width: 140px;
+  height: 140px;
+  margin-left: -70px;
+  margin-top: -70px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 236, 173, 0.95) 0%,
+    rgba(255, 213, 79, 0.55) 38%,
+    rgba(255, 168, 38, 0) 70%
+  );
+  pointer-events: none;
+  z-index: 155;
+}
+
+@keyframes shell-shake {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  12% {
+    transform: translate(-9px, 5px) rotate(-0.7deg);
+  }
+  26% {
+    transform: translate(8px, -6px) rotate(0.6deg);
+  }
+  40% {
+    transform: translate(-7px, 5px) rotate(-0.5deg);
+  }
+  54% {
+    transform: translate(6px, -4px) rotate(0.4deg);
+  }
+  68% {
+    transform: translate(-4px, 3px) rotate(-0.25deg);
+  }
+  82% {
+    transform: translate(3px, -2px) rotate(0.15deg);
+  }
+}
+
+.game-shell--shake {
+  animation: shell-shake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-shell--shake {
+    animation: none;
+  }
+}
+
+.turn-hint {
+  position: fixed;
+  bottom: 158px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  z-index: 120;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.flying-card {
+  will-change: transform, left, top;
+}
+
+.game-over {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 20, 12, 0.72);
+  backdrop-filter: blur(3px);
+  padding: 20px;
+}
+
+.game-over__panel {
+  width: 100%;
+  max-width: 340px;
+  background: linear-gradient(160deg, #1f5c34, #123a22);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 22px 20px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.game-over__title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.game-over__match {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  margin-bottom: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-over__scores {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.game-over__divider {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.game-over__col {
+  flex: 1;
+}
+
+.game-over__name {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  margin-bottom: 4px;
+}
+
+.game-over__total {
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-over__lines {
+  list-style: none;
+  font-size: 0.78rem;
+}
+
+.game-over__lines li {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  opacity: 0.9;
+}
+
+.game-over__lines-sub {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.15);
+  opacity: 0.6 !important;
+}
+
+.game-over__btn {
+  margin-top: 20px;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: #ffd54f;
+  color: #143a22;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.game-over__btn:active {
+  transform: scale(0.98);
+}
+
+/* Confirmation dialog */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 20, 12, 0.72);
+  backdrop-filter: blur(3px);
+  padding: 24px;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 320px;
+  background: linear-gradient(160deg, #1f5c34, #123a22);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.dialog__title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.dialog__message {
+  font-size: 0.85rem;
+  opacity: 0.82;
+  line-height: 1.4;
+  margin-bottom: 18px;
+}
+
+.dialog__actions {
+  display: flex;
+  gap: 10px;
+}
+
+.dialog__btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dialog__btn--ghost {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f5f0e6;
+}
+
+.dialog__btn--danger {
+  background: #e5533d;
+  color: #fff;
+}
+
+.dialog__btn:active {
+  transform: scale(0.97);
+}

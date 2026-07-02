@@ -24,6 +24,10 @@ const OPPONENT_NAME = 'Rakip'
 
 const CAPTURE_TOTAL_MS = (TIMING.capturePause + TIMING.captureMove) * 1000 + 120
 
+// How long the deal-in animation takes (last card's stagger + spring settle).
+// Turns are paused for this long so nobody plays before the cards arrive.
+const DEAL_ANIM_MS = 950
+
 function log(...args: unknown[]) {
   // eslint-disable-next-line no-console
   console.log('[pisti]', ...args)
@@ -45,15 +49,24 @@ export default function App() {
 
   const pileRef = useRef<HTMLDivElement>(null)
   const opponentHandRef = useRef<HTMLDivElement>(null)
+  const sideHudRef = useRef<HTMLDivElement>(null)
   const [flying, setFlying] = useState<FlyingCardState | null>(null)
   const [capture, setCapture] = useState<CaptureState | null>(null)
   const [pileHighlight, setPileHighlight] = useState(false)
   const [pileVisuals, setPileVisuals] = useState<PileVisuals>({})
   const [shaking, setShaking] = useState(false)
+  const [dealing, setDealing] = useState(true)
   const captureResultRef = useRef<PlayResult | null>(null)
   const landTimerRef = useRef<number | null>(null)
   const captureTimerRef = useRef<number | null>(null)
   const shakeTimerRef = useRef<number | null>(null)
+
+  // Whenever a fresh hand is dealt, pause play until the deal-in animation ends.
+  useEffect(() => {
+    setDealing(true)
+    const timer = window.setTimeout(() => setDealing(false), DEAL_ANIM_MS)
+    return () => window.clearTimeout(timer)
+  }, [state.dealSerial])
 
   const getPileTarget = useCallback(() => {
     const pileEl = pileRef.current?.querySelector('.table-pile__stack')
@@ -168,7 +181,10 @@ export default function App() {
       log('playPlayerCard ->', result ? { card: result.playedCard.id, captured: result.captured } : null)
       if (!result) return
 
-      launchFlight(result, createFlyingCardFromThrow(card, element, target, info.velocity, info.offset))
+      launchFlight(
+        result,
+        createFlyingCardFromThrow(card, element, target, info.velocity, info.offset, result.pisti),
+      )
     },
     [canPlayerAct, flying, capture, getPileTarget, playPlayerCard, launchFlight],
   )
@@ -194,7 +210,7 @@ export default function App() {
       return
     }
 
-    launchFlight(result, createOpponentFlyingCard(result.playedCard, fromRect, target))
+    launchFlight(result, createOpponentFlyingCard(result.playedCard, fromRect, target, result.pisti))
   }, [flying, capture, getPileTarget, playOpponentCard, applyLanding, launchFlight])
 
   useEffect(() => {
@@ -211,7 +227,8 @@ export default function App() {
       state.phase !== 'idle' ||
       state.gameOver ||
       flying ||
-      capture
+      capture ||
+      dealing
     ) {
       return
     }
@@ -219,7 +236,7 @@ export default function App() {
     log('opponent-effect: scheduling throw in 650ms')
     const timer = window.setTimeout(triggerOpponentThrow, 650)
     return () => window.clearTimeout(timer)
-  }, [state.turn, state.phase, state.gameOver, flying, capture, triggerOpponentThrow, state.opponentHand.length])
+  }, [state.turn, state.phase, state.gameOver, flying, capture, dealing, triggerOpponentThrow, state.opponentHand.length])
 
   const resetTransient = useCallback(() => {
     if (landTimerRef.current !== null) {
@@ -304,7 +321,10 @@ export default function App() {
 
   return (
     <div className={`game-shell${shaking ? ' game-shell--shake' : ''}`}>
-      <div className="opponent-wrap" ref={opponentHandRef}>
+      <div
+        className={`opponent-wrap${dealing ? ' opponent-wrap--dealing' : ''}`}
+        ref={opponentHandRef}
+      >
         <Hud
           side="top"
           name={OPPONENT_NAME}
@@ -313,7 +333,7 @@ export default function App() {
           cards={state.opponentCollected.length}
           active={state.turn === 'opponent'}
         />
-        <OpponentArea handCount={state.opponentHand.length} />
+        <OpponentArea handCount={state.opponentHand.length} dealFromRef={sideHudRef} />
       </div>
 
       <div className="table-area">
@@ -322,6 +342,7 @@ export default function App() {
           cards={state.pile}
           visuals={pileVisuals}
           highlight={pileHighlight}
+          dealFromRef={sideHudRef}
           capturing={!!capture}
         />
       </div>
@@ -329,7 +350,8 @@ export default function App() {
       <div className="player-area">
         <PlayerHand
           cards={state.playerHand}
-          disabled={!canPlayerAct || !!flying || !!capture}
+          disabled={!canPlayerAct || !!flying || !!capture || dealing}
+          dealFromRef={sideHudRef}
           onReorder={reorderPlayerHand}
           onThrow={handlePlayerThrow}
         />
@@ -343,7 +365,7 @@ export default function App() {
         />
       </div>
 
-      <div className="side-hud">
+      <div className="side-hud" ref={sideHudRef}>
         <div className="side-hud__match">
           <span className="side-hud__score side-hud__score--me">{state.games.player}</span>
           <span className="side-hud__sep">–</span>

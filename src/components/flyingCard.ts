@@ -56,6 +56,7 @@ export function createFlyingCardFromThrow(
   targetRect: DOMRect,
   velocity: { x: number; y: number },
   offset: { x: number; y: number },
+  pisti = false,
 ): FlyingCardState {
   const rect = element.getBoundingClientRect()
   const physics = computeThrow({
@@ -72,6 +73,8 @@ export function createFlyingCardFromThrow(
     startY: rect.top,
     targetX: targetRect.left + targetRect.width / 2 - HAND_CARD_WIDTH / 2,
     targetY: targetRect.top + targetRect.height / 2 - HAND_CARD_HEIGHT / 2,
+    // A pişti card is played face-down (back on top) as a traditional marker.
+    faceDown: pisti,
     width: HAND_CARD_WIDTH,
     height: HAND_CARD_HEIGHT,
     landScale: CARD_WIDTH / HAND_CARD_WIDTH,
@@ -85,6 +88,7 @@ export function createOpponentFlyingCard(
   card: CardType,
   fromRect: DOMRect,
   targetRect: DOMRect,
+  pisti = false,
 ): FlyingCardState {
   const physics = computeOpponentThrow()
 
@@ -96,7 +100,8 @@ export function createOpponentFlyingCard(
     targetX: targetRect.left + targetRect.width / 2 - CARD_WIDTH / 2,
     targetY: targetRect.top + targetRect.height / 2 - CARD_HEIGHT / 2,
     faceDown: true,
-    flip: true,
+    // On a pişti the card stays face-down (marker); otherwise it flips to reveal.
+    flip: !pisti,
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
     landScale: 1,

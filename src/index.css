@@ -1,3 +1,10 @@
+:root {
+  /* The UI already ships a dark theme; declaring this stops mobile browsers
+     (Samsung Internet night mode, Chrome Android "Auto Dark Theme") from
+     force-inverting card colors so white cards / black pips stay correct. */
+  color-scheme: dark;
+}
+
 *,
 *::before,
 *::after {
@@ -194,6 +201,7 @@ body {
 .opponent-wrap {
   flex: 0 0 auto;
   position: relative;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -201,6 +209,12 @@ body {
   /* Clip card tops that rise above the top HUD, so the hand is cropped at the
      top edge just like the player's hand is cropped at the bottom. */
   overflow: hidden;
+}
+
+/* While dealing, drop the clip so cards flying in from the centre HUD are fully
+   visible on their way to the hand (they also sit above the table via z-index). */
+.opponent-wrap--dealing {
+  overflow: visible;
 }
 
 /* Top HUD acts as a tray (mirror of the bottom one): the opponent's cards
@@ -237,6 +251,8 @@ body {
 
 .table-area {
   flex: 1 1 55%;
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -291,6 +307,7 @@ body {
 .player-area {
   flex: 0 0 auto;
   position: relative;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -364,22 +381,35 @@ body {
   );
 }
 
-.card__rank {
+/* Corner index: rank stacked directly above a small suit symbol. */
+.card__index {
   position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.card__index--tl {
+  top: 6px;
+  left: 7px;
+}
+
+.card__index--br {
+  bottom: 6px;
+  right: 7px;
+  transform: rotate(180deg);
+}
+
+.card__rank {
   font-weight: 700;
   font-size: 1rem;
   line-height: 1;
 }
 
-.card__rank--tl {
-  top: 6px;
-  left: 7px;
-}
-
-.card__rank--br {
-  bottom: 6px;
-  right: 7px;
-  transform: rotate(180deg);
+.card__index-suit {
+  line-height: 1;
+  margin-top: 1px;
 }
 
 .card__suit--center {

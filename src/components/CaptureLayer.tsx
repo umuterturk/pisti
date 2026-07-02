@@ -52,8 +52,10 @@ export function CaptureLayer({ capture, visuals }: CaptureLayerProps) {
               ease: [0.22, 1, 0.36, 1],
             }}
           >
-            {capture.cards.map((card) => {
+            {capture.cards.map((card, index) => {
               const placement = visuals?.[card.id] ?? scatterFor(card)
+              // The played card (last one) stays face-down when it made a pişti.
+              const faceDown = capture.pisti && index === capture.cards.length - 1
               return (
                 <div
                   key={card.id}
@@ -65,7 +67,7 @@ export function CaptureLayer({ capture, visuals }: CaptureLayerProps) {
                     transform: `translate(${placement.offsetX}px, ${placement.offsetY}px) rotate(${placement.rotation}deg)`,
                   }}
                 >
-                  <Card card={card} />
+                  <Card card={faceDown ? undefined : card} faceDown={faceDown} />
                 </div>
               )
             })}

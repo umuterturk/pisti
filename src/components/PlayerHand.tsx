@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { Card as CardType } from '../game/cards'
 import { computeHandLayout, findReorderIndex } from '../motion/handLayout'
-import { HAND_CARD_WIDTH } from '../motion/params'
-import { HandCard, type DealOrigin } from './HandCard'
+import { HandCard } from './HandCard'
 import type { PanInfo } from 'framer-motion'
 
 const DEAL_STAGGER = 0.08
@@ -10,11 +9,12 @@ const DEAL_STAGGER = 0.08
 interface PlayerHandProps {
   cards: CardType[]
   disabled?: boolean
+  dealFromRef?: RefObject<HTMLDivElement | null>
   onReorder: (order: string[]) => void
   onThrow: (card: CardType, info: PanInfo, element: HTMLElement) => void
 }
 
-export function PlayerHand({ cards, disabled, onReorder, onThrow }: PlayerHandProps) {
+export function PlayerHand({ cards, disabled, dealFromRef, onReorder, onThrow }: PlayerHandProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(360)
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -45,14 +45,6 @@ export function PlayerHand({ cards, disabled, onReorder, onThrow }: PlayerHandPr
 
   const activeIndex = activeId ? previewOrder.indexOf(activeId) : null
   const baseSlots = computeHandLayout(orderedCards.length, containerWidth, activeIndex)
-
-  // Deck/dealer origin (container-local): centered horizontally, high above the
-  // hand so cards fly down into place. Only newly mounted cards use it.
-  const dealOrigin: DealOrigin = {
-    x: containerWidth / 2 - HAND_CARD_WIDTH / 2,
-    y: -460,
-    rotate: 0,
-  }
 
   const handleDragMove = useCallback(
     (cardId: string, dragX: number) => {
@@ -91,7 +83,7 @@ export function PlayerHand({ cards, disabled, onReorder, onThrow }: PlayerHandPr
             card={card}
             slot={baseSlots[index]}
             disabled={disabled}
-            dealOrigin={dealOrigin}
+            dealFromRef={dealFromRef}
             dealDelay={index * DEAL_STAGGER}
             onActiveChange={setActiveId}
             onDragMove={handleDragMove}

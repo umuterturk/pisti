@@ -41,9 +41,20 @@ export interface GameState {
   /** Games won across the whole match (persists between hands). */
   games: MatchScore
   gameNumber: number
+  /** Bumped whenever cards are freshly dealt into hands (initial + refills), so
+   *  the UI can play the deal-in animation and pause turns until it finishes. */
+  dealSerial: number
 }
 
 const HAND_SIZE = 4
+
+// Monotonic counter so every fresh deal produces a unique serial, even if two
+// deals happen within the same millisecond.
+let dealCounter = 0
+function nextDealSerial(): number {
+  dealCounter += 1
+  return dealCounter
+}
 
 function freshState(games: MatchScore = { player: 0, opponent: 0 }, gameNumber = 1): GameState {
   const { playerHand, opponentHand, table, deck } = dealNewGame(HAND_SIZE)
@@ -63,6 +74,7 @@ function freshState(games: MatchScore = { player: 0, opponent: 0 }, gameNumber =
     scoreboard: null,
     games,
     gameNumber,
+    dealSerial: nextDealSerial(),
   }
 }
 
@@ -99,12 +111,14 @@ function commit(prev: GameState, result: PlayResult): GameState {
   let deck = prev.deck
   let playerHand = prev.playerHand
   let opponentHand = prev.opponentHand
+  let dealSerial = prev.dealSerial
 
   // Refill both hands once they are empty and the draw pile still has cards.
   if (playerHand.length === 0 && opponentHand.length === 0 && deck.length > 0) {
     playerHand = deck.slice(0, HAND_SIZE)
     opponentHand = deck.slice(HAND_SIZE, HAND_SIZE * 2)
     deck = deck.slice(HAND_SIZE * 2)
+    dealSerial = nextDealSerial()
   }
 
   const handsEmpty = playerHand.length === 0 && opponentHand.length === 0
@@ -146,6 +160,7 @@ function commit(prev: GameState, result: PlayResult): GameState {
       gameOver: true,
       scoreboard,
       games,
+      dealSerial,
     }
   }
 
@@ -164,6 +179,7 @@ function commit(prev: GameState, result: PlayResult): GameState {
     phase: 'idle',
     gameOver: false,
     scoreboard: null,
+    dealSerial,
   }
 }
 

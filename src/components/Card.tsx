@@ -22,6 +22,7 @@ export function Card({
   const radius = Math.round(width * 0.13)
   const pad = Math.round(width * 0.09)
   const rankFont = Math.round(height * 0.15)
+  const cornerSuitFont = Math.round(rankFont * 0.82)
   const suitFont = Math.round(width * 0.46)
 
   if (faceDown || !card) {
@@ -44,10 +45,15 @@ export function Card({
       style={{ width, height, borderRadius: radius, ...style }}
     >
       <span
-        className="card__rank card__rank--tl"
-        style={{ color, top: pad, left: pad + 1, fontSize: rankFont }}
+        className="card__index card__index--tl"
+        style={{ color, top: pad, left: pad + 1 }}
       >
-        {card.rank}
+        <span className="card__rank" style={{ fontSize: rankFont }}>
+          {card.rank}
+        </span>
+        <span className="card__index-suit" style={{ fontSize: cornerSuitFont }}>
+          {symbol}
+        </span>
       </span>
       <span
         className="card__suit card__suit--center"
@@ -56,10 +62,15 @@ export function Card({
         {symbol}
       </span>
       <span
-        className="card__rank card__rank--br"
-        style={{ color, bottom: pad, right: pad + 1, fontSize: rankFont }}
+        className="card__index card__index--br"
+        style={{ color, bottom: pad, right: pad + 1 }}
       >
-        {card.rank}
+        <span className="card__rank" style={{ fontSize: rankFont }}>
+          {card.rank}
+        </span>
+        <span className="card__index-suit" style={{ fontSize: cornerSuitFont }}>
+          {symbol}
+        </span>
       </span>
     </motion.div>
   )

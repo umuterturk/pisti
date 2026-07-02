@@ -9,12 +9,14 @@ const DEAL_STAGGER = 0.08
 interface PlayerHandProps {
   cards: CardType[]
   disabled?: boolean
+  /** Rank of the top pile card; hand cards of this rank are highlighted. */
+  matchRank?: string | null
   dealFromRef?: RefObject<HTMLDivElement | null>
   onReorder: (order: string[]) => void
   onThrow: (card: CardType, info: PanInfo, element: HTMLElement) => void
 }
 
-export function PlayerHand({ cards, disabled, dealFromRef, onReorder, onThrow }: PlayerHandProps) {
+export function PlayerHand({ cards, disabled, matchRank, dealFromRef, onReorder, onThrow }: PlayerHandProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(360)
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -83,6 +85,10 @@ export function PlayerHand({ cards, disabled, dealFromRef, onReorder, onThrow }:
             card={card}
             slot={baseSlots[index]}
             disabled={disabled}
+            highlightRank={
+              !disabled &&
+              (card.rank === 'J' || (matchRank != null && card.rank === matchRank))
+            }
             dealFromRef={dealFromRef}
             dealDelay={index * DEAL_STAGGER}
             onActiveChange={setActiveId}

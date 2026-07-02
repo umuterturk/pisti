@@ -15,6 +15,8 @@ interface HandCardProps {
   card: CardType
   slot: HandSlot
   disabled?: boolean
+  /** Hints this card's rank matches the top of the pile (can capture). */
+  highlightRank?: boolean
   /** Element (the centre HUD) the card is dealt from; new cards fly out of it. */
   dealFromRef?: RefObject<HTMLDivElement | null>
   dealDelay?: number
@@ -28,6 +30,7 @@ export function HandCard({
   card,
   slot,
   disabled = false,
+  highlightRank = false,
   dealFromRef,
   dealDelay = 0,
   onActiveChange,
@@ -173,7 +176,12 @@ export function HandCard({
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
     >
-      <Card card={card} width={HAND_CARD_WIDTH} height={HAND_CARD_HEIGHT} />
+      <Card
+        card={card}
+        width={HAND_CARD_WIDTH}
+        height={HAND_CARD_HEIGHT}
+        highlightRank={highlightRank}
+      />
     </motion.div>
   )
 }

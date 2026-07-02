@@ -9,6 +9,8 @@ interface CardProps {
   height?: number
   style?: React.CSSProperties
   className?: string
+  /** Highlights the rank corners, hinting this card can capture the pile. */
+  highlightRank?: boolean
 }
 
 export function Card({
@@ -18,6 +20,7 @@ export function Card({
   height = CARD_HEIGHT,
   style,
   className = '',
+  highlightRank = false,
 }: CardProps) {
   const radius = Math.round(width * 0.13)
   const pad = Math.round(width * 0.09)
@@ -39,16 +42,18 @@ export function Card({
   const color = SUIT_COLOR[card.suit]
   const symbol = SUIT_SYMBOL[card.suit]
 
+  const rankClass = `card__rank${highlightRank ? ' card__rank--match' : ''}`
+
   return (
     <motion.div
-      className={`card card--face ${className}`}
+      className={`card card--face ${highlightRank ? 'card--match ' : ''}${className}`}
       style={{ width, height, borderRadius: radius, ...style }}
     >
       <span
         className="card__index card__index--tl"
         style={{ color, top: pad, left: pad + 1 }}
       >
-        <span className="card__rank" style={{ fontSize: rankFont }}>
+        <span className={rankClass} style={{ fontSize: rankFont }}>
           {card.rank}
         </span>
         <span className="card__index-suit" style={{ fontSize: cornerSuitFont }}>
@@ -65,7 +70,7 @@ export function Card({
         className="card__index card__index--br"
         style={{ color, bottom: pad, right: pad + 1 }}
       >
-        <span className="card__rank" style={{ fontSize: rankFont }}>
+        <span className={rankClass} style={{ fontSize: rankFont }}>
           {card.rank}
         </span>
         <span className="card__index-suit" style={{ fontSize: cornerSuitFont }}>

@@ -9,8 +9,18 @@ export interface CaptureState {
   cards: CardType[]
   winner: 'player' | 'opponent'
   pisti: boolean
+  doublePisti: boolean
+  pistiStreak: number
   originX: number
   originY: number
+}
+
+// Escalating combo adjective for back-to-back piştis. 4+ tops out at "İmkansız!".
+function streakLabel(streak: number): string | null {
+  if (streak >= 4) return 'İMKANSIZ!'
+  if (streak === 3) return 'İNANILMAZ!'
+  if (streak === 2) return 'HARİKA!'
+  return null
 }
 
 interface CaptureLayerProps {
@@ -76,32 +86,112 @@ export function CaptureLayer({ capture, visuals }: CaptureLayerProps) {
           {capture.pisti && (
             <>
               <motion.div
-                className="capture-layer__flash"
+                className={`capture-layer__flash${capture.doublePisti ? ' capture-layer__flash--double' : ''}`}
                 style={{ position: 'fixed', left: capture.originX, top: capture.originY }}
-                initial={{ scale: 0, opacity: 0.85 }}
-                animate={{ scale: 7, opacity: 0 }}
+                initial={{ scale: 0, opacity: capture.doublePisti ? 0.95 : 0.85 }}
+                animate={{ scale: capture.doublePisti ? 11 : 7, opacity: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ delay: TIMING.capturePause, duration: 0.7, ease: 'easeOut' }}
+                transition={{
+                  delay: TIMING.capturePause,
+                  duration: capture.doublePisti ? 0.9 : 0.7,
+                  ease: 'easeOut',
+                }}
               />
-              <motion.div
-                className="capture-layer__pisti"
+              {capture.doublePisti && (
+                <>
+                  <motion.div
+                    className="capture-layer__flash capture-layer__flash--double"
+                    style={{ position: 'fixed', left: capture.originX, top: capture.originY }}
+                    initial={{ scale: 0, opacity: 0.7 }}
+                    animate={{ scale: 14, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ delay: TIMING.capturePause + 0.14, duration: 0.9, ease: 'easeOut' }}
+                  />
+                  {Array.from({ length: 14 }, (_, i) => {
+                    const angle = (i / 14) * Math.PI * 2
+                    const dist = 150 + (i % 3) * 40
+                    return (
+                      <motion.div
+                        key={i}
+                        className="capture-layer__spark"
+                        style={{ position: 'fixed', left: capture.originX, top: capture.originY }}
+                        initial={{ x: 0, y: 0, scale: 0, opacity: 0 }}
+                        animate={{
+                          x: Math.cos(angle) * dist,
+                          y: Math.sin(angle) * dist,
+                          scale: [0, 1.2, 0],
+                          opacity: [0, 1, 0],
+                        }}
+                        transition={{
+                          delay: TIMING.capturePause + 0.08,
+                          duration: 0.85,
+                          ease: 'easeOut',
+                        }}
+                      />
+                    )
+                  })}
+                </>
+              )}
+              {streakLabel(capture.pistiStreak) && (
+                <div
+                  className="capture-layer__anchor"
+                  style={{ position: 'fixed', left: capture.originX, top: capture.originY - 58 }}
+                >
+                  <motion.div
+                    className={`capture-layer__combo capture-layer__combo--${
+                      capture.pistiStreak >= 4 ? 'max' : capture.pistiStreak
+                    }`}
+                    initial={{ scale: 0.3, opacity: 0, y: -10 }}
+                    animate={{
+                      scale: [0.3, 1.35, 1],
+                      opacity: [0, 1, 1],
+                      y: [-10, 0, 0],
+                    }}
+                    exit={{ opacity: 0, y: -14 }}
+                    transition={{
+                      delay: TIMING.capturePause + 0.12,
+                      duration: 0.6,
+                      ease: 'easeOut',
+                      times: [0, 0.5, 1],
+                    }}
+                  >
+                    {streakLabel(capture.pistiStreak)}
+                    <span className="capture-layer__combo-count">×{capture.pistiStreak}</span>
+                  </motion.div>
+                </div>
+              )}
+              <div
+                className="capture-layer__anchor"
                 style={{ position: 'fixed', left: capture.originX, top: capture.originY }}
+              >
+              <motion.div
+                className={`capture-layer__pisti${capture.doublePisti ? ' capture-layer__pisti--double' : ''}`}
                 initial={{ scale: 0.2, opacity: 0, rotate: -14 }}
                 animate={{
-                  scale: [0.2, 1.55, 0.9, 1.12, 1],
+                  scale: capture.doublePisti
+                    ? [0.2, 1.9, 1.05, 1.28, 1.15]
+                    : [0.2, 1.55, 0.9, 1.12, 1],
                   opacity: [0, 1, 1, 1, 1],
-                  rotate: [-14, 9, -5, 3, 0],
+                  rotate: capture.doublePisti ? [-18, 11, -6, 4, 0] : [-14, 9, -5, 3, 0],
                 }}
                 exit={{ opacity: 0, scale: 1.7 }}
                 transition={{
                   delay: TIMING.capturePause,
-                  duration: 0.75,
+                  duration: capture.doublePisti ? 0.95 : 0.75,
                   ease: 'easeOut',
                   times: [0, 0.28, 0.52, 0.78, 1],
                 }}
               >
-                Pişti!
+                {capture.doublePisti ? (
+                  <>
+                    <span className="capture-layer__pisti-main">Çift Pişti!</span>
+                    <span className="capture-layer__pisti-sub">Jandan jana · +20</span>
+                  </>
+                ) : (
+                  'Pişti!'
+                )}
               </motion.div>
+              </div>
             </>
           )}
         </motion.div>

@@ -15,6 +15,9 @@ export interface PlayResult {
   playedCard: Card
   captured: boolean
   pisti: boolean
+  doublePisti: boolean
+  /** How many piştis have now landed back-to-back (only meaningful when pisti). */
+  pistiStreak: number
   /** Snapshot of the pile plus the played card, used for the collect animation. */
   capturedCards: Card[]
 }
@@ -33,6 +36,10 @@ export interface GameState {
   opponentCollected: Card[]
   playerPisti: number
   opponentPisti: number
+  playerDoublePisti: number
+  opponentDoublePisti: number
+  /** Consecutive piştis landed back-to-back by either side (combo counter). */
+  pistiStreak: number
   lastCapturer: Turn | null
   turn: Turn
   phase: GamePhase
@@ -67,6 +74,9 @@ function freshState(games: MatchScore = { player: 0, opponent: 0 }, gameNumber =
     opponentCollected: [],
     playerPisti: 0,
     opponentPisti: 0,
+    playerDoublePisti: 0,
+    opponentDoublePisti: 0,
+    pistiStreak: 0,
     lastCapturer: null,
     turn: 'player',
     phase: 'idle',
@@ -84,24 +94,31 @@ function other(turn: Turn): Turn {
 
 /** Applies the outcome of a play after its landing animation has finished. */
 function commit(prev: GameState, result: PlayResult): GameState {
-  const { who, playedCard, captured, pisti } = result
+  const { who, playedCard, captured, pisti, doublePisti } = result
 
   let pile = prev.pile
   let playerCollected = prev.playerCollected
   let opponentCollected = prev.opponentCollected
   let playerPisti = prev.playerPisti
   let opponentPisti = prev.opponentPisti
+  let playerDoublePisti = prev.playerDoublePisti
+  let opponentDoublePisti = prev.opponentDoublePisti
+  let pistiStreak = prev.pistiStreak
   let lastCapturer = prev.lastCapturer
 
   if (captured) {
     const haul = [...prev.pile, playedCard]
     if (who === 'player') {
       playerCollected = [...playerCollected, ...haul]
-      if (pisti) playerPisti += 1
+      if (doublePisti) playerDoublePisti += 1
+      else if (pisti) playerPisti += 1
     } else {
       opponentCollected = [...opponentCollected, ...haul]
-      if (pisti) opponentPisti += 1
+      if (doublePisti) opponentDoublePisti += 1
+      else if (pisti) opponentPisti += 1
     }
+    // A pişti extends the combo; any other capture snaps the chain.
+    pistiStreak = pisti ? pistiStreak + 1 : 0
     pile = []
     lastCapturer = who
   } else {
@@ -137,6 +154,8 @@ function commit(prev: GameState, result: PlayResult): GameState {
       opponentCollected,
       playerPisti,
       opponentPisti,
+      playerDoublePisti,
+      opponentDoublePisti,
     )
 
     const games: MatchScore = {
@@ -154,6 +173,9 @@ function commit(prev: GameState, result: PlayResult): GameState {
       opponentCollected,
       playerPisti,
       opponentPisti,
+      playerDoublePisti,
+      opponentDoublePisti,
+      pistiStreak,
       lastCapturer,
       turn: prev.turn,
       phase: 'idle',
@@ -174,6 +196,9 @@ function commit(prev: GameState, result: PlayResult): GameState {
     opponentCollected,
     playerPisti,
     opponentPisti,
+    playerDoublePisti,
+    opponentDoublePisti,
+    pistiStreak,
     lastCapturer,
     turn: other(who),
     phase: 'idle',
@@ -247,12 +272,14 @@ export function useGame() {
       const card = prev.playerHand.find((c) => c.id === cardId)
       if (!card) return null
 
-      const { captured, pisti } = checkCapture(card, prev.pile)
+      const { captured, pisti, doublePisti } = checkCapture(card, prev.pile)
       const result: PlayResult = {
         who: 'player',
         playedCard: card,
         captured,
         pisti,
+        doublePisti,
+        pistiStreak: pisti ? prev.pistiStreak + 1 : 0,
         capturedCards: [...prev.pile, card],
       }
 
@@ -281,12 +308,14 @@ export function useGame() {
     const card = prev.opponentHand.find((c) => c.id === cardId)
     if (!card) return null
 
-    const { captured, pisti } = checkCapture(card, prev.pile)
+    const { captured, pisti, doublePisti } = checkCapture(card, prev.pile)
     const result: PlayResult = {
       who: 'opponent',
       playedCard: card,
       captured,
       pisti,
+      doublePisti,
+      pistiStreak: pisti ? prev.pistiStreak + 1 : 0,
       capturedCards: [...prev.pile, card],
     }
 

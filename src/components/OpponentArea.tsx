@@ -71,7 +71,7 @@ export function OpponentArea({ handCount, dealFromRef }: OpponentAreaProps) {
             className="opponent-area__card"
             style={{
               left: i * overlap,
-              transform: `rotate(${-5 + (i / Math.max(1, handCount - 1)) * 10}deg)`,
+              transform: `rotate(${5 - (i / Math.max(1, handCount - 1)) * 10}deg)`,
               zIndex: i,
             }}
           >

@@ -1,3 +1,5 @@
+import type { RefObject } from 'react'
+
 interface HudProps {
   name: string
   score: number
@@ -5,9 +7,11 @@ interface HudProps {
   cards: number
   active: boolean
   side: 'top' | 'bottom'
+  /** Attached to the score value so flying score popups know where to land. */
+  scoreRef?: RefObject<HTMLSpanElement | null>
 }
 
-export function Hud({ name, score, pisti, cards, active, side }: HudProps) {
+export function Hud({ name, score, pisti, cards, active, side, scoreRef }: HudProps) {
   const initial = name.charAt(0).toUpperCase()
   return (
     <div className={`hud hud--${side} ${active ? 'hud--active' : ''}`}>
@@ -20,7 +24,7 @@ export function Hud({ name, score, pisti, cards, active, side }: HudProps) {
       </div>
       <div className="hud__stats">
         <div className="hud__stat">
-          <span className="hud__stat-val">{score}</span>
+          <span className="hud__stat-val" ref={scoreRef}>{score}</span>
           <span className="hud__stat-label">Puan</span>
         </div>
         <div className="hud__stat">

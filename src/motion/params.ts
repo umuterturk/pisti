@@ -1,5 +1,5 @@
-export const CARD_WIDTH = 72
-export const CARD_HEIGHT = 100
+export const CARD_WIDTH = 84
+export const CARD_HEIGHT = 117
 
 export const HAND_CARD_WIDTH = 168
 export const HAND_CARD_HEIGHT = 236

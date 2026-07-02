@@ -1,4 +1,4 @@
-import { forwardRef, useLayoutEffect, useRef, type RefObject } from 'react'
+import { forwardRef, useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { animate, motion, useMotionValue } from 'framer-motion'
 import type { Card as CardType } from '../game/cards'
 import { CARD_HEIGHT, CARD_WIDTH, LANDING } from '../motion/params'
@@ -35,6 +35,8 @@ export type PileVisuals = Record<string, PileCardVisual>
 // A single table card. Cards placed by a play already have a recorded visual and
 // simply appear at their landing spot; the initial table cards (dealt at the
 // start of a hand, no recorded visual) fly in from the centre HUD.
+const TOP_CARD_SCALE = 1.1
+
 function TableCard({
   card,
   placement,
@@ -42,6 +44,8 @@ function TableCard({
   dealIn,
   dealFromRef,
   dealDelay,
+  highlightRank = false,
+  emphasize = false,
 }: {
   card: CardType
   placement: PileCardVisual
@@ -49,12 +53,15 @@ function TableCard({
   dealIn: boolean
   dealFromRef?: RefObject<HTMLDivElement | null>
   dealDelay: number
+  highlightRank?: boolean
+  emphasize?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const x = useMotionValue(placement.offsetX)
   const y = useMotionValue(placement.offsetY)
   const rotate = useMotionValue(placement.rotation)
   const opacity = useMotionValue(dealIn ? 0 : 1)
+  const scale = useMotionValue(emphasize ? TOP_CARD_SCALE : 1)
   const didDeal = useRef(false)
 
   useLayoutEffect(() => {
@@ -88,6 +95,21 @@ function TableCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // As soon as a newer card lands on top, this card stops being emphasized:
+  // quickly animate its scale down (and pop the new top card up).
+  const didMountScale = useRef(false)
+  useEffect(() => {
+    if (!didMountScale.current) {
+      didMountScale.current = true
+      return
+    }
+    // Decelerating ease-out: shrinks fast at first, then eases into its size.
+    animate(scale, emphasize ? TOP_CARD_SCALE : 1, {
+      duration: 0.45,
+      ease: [0.16, 1, 0.3, 1],
+    })
+  }, [emphasize, scale])
+
   return (
     <motion.div
       ref={ref}
@@ -97,6 +119,7 @@ function TableCard({
         y,
         rotate,
         opacity,
+        scale,
         zIndex,
         position: 'absolute',
         left: '50%',
@@ -105,7 +128,7 @@ function TableCard({
         marginTop: -CARD_HEIGHT / 2,
       }}
     >
-      <Card card={card} />
+      <Card card={card} highlightRank={highlightRank} />
     </motion.div>
   )
 }
@@ -114,6 +137,10 @@ interface TablePileProps {
   cards: CardType[]
   visuals?: PileVisuals
   highlight?: boolean
+  /** Highlights the rank of the top (capturable) card when the player holds a match. */
+  highlightTopRank?: boolean
+  /** Shows the "Oyna" prompt only when it's the player's turn to play. */
+  showPlayPrompt?: boolean
   dealFromRef?: RefObject<HTMLDivElement | null>
   /** While a capture animation is playing, the pile is drawn by CaptureLayer
    * instead, so we hide the real cards here to avoid a duplicate ghost image. */
@@ -121,14 +148,16 @@ interface TablePileProps {
 }
 
 export const TablePile = forwardRef<HTMLDivElement, TablePileProps>(
-  function TablePile({ cards, visuals, highlight = false, dealFromRef, capturing = false }, ref) {
+  function TablePile({ cards, visuals, highlight = false, highlightTopRank = false, showPlayPrompt = false, dealFromRef, capturing = false }, ref) {
     const shown = capturing ? [] : cards
     // Index among the freshly-dealt (no recorded visual) cards, for stagger.
     let dealIndex = 0
     return (
       <div className={`table-pile ${highlight ? 'table-pile--highlight' : ''}`} ref={ref}>
         <div className="table-pile__stack">
-          {!capturing && cards.length === 0 && <div className="table-pile__empty">Oyna</div>}
+          {!capturing && cards.length === 0 && showPlayPrompt && (
+            <div className="table-pile__empty">Oyna</div>
+          )}
           {shown.map((card, globalIndex) => {
             // Each card keeps a stable position for its whole life on the table:
             // its recorded landing if it flew in, otherwise a seeded scatter.
@@ -148,6 +177,8 @@ export const TablePile = forwardRef<HTMLDivElement, TablePileProps>(
                 dealIn={dealIn}
                 dealFromRef={dealFromRef}
                 dealDelay={dealDelay}
+                highlightRank={highlightTopRank && globalIndex === shown.length - 1}
+                emphasize={globalIndex === shown.length - 1}
               />
             )
           })}

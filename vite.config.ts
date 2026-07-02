@@ -10,7 +10,17 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // We register + poll for updates ourselves in src/pwa.ts, so the plugin
+      // must not also inject its own bare registration script.
+      injectRegister: false,
       includeAssets: ['favicon.svg'],
+      workbox: {
+        // Take control immediately so an updated worker can activate (and the
+        // page auto-reload) without waiting for every tab to close first.
+        clientsClaim: true,
+        skipWaiting: true,
+        cleanupOutdatedCaches: true,
+      },
       manifest: {
         name: 'Pişti',
         short_name: 'Pişti',

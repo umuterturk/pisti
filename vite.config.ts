@@ -13,7 +13,11 @@ export default defineConfig({
       // We register + poll for updates ourselves in src/pwa.ts, so the plugin
       // must not also inject its own bare registration script.
       injectRegister: false,
-      includeAssets: ['favicon.svg'],
+      includeAssets: [
+        'favicon-32.png',
+        'apple-touch-icon.png',
+        'og-image.jpg',
+      ],
       workbox: {
         // Take control immediately so an updated worker can activate (and the
         // page auto-reload) without waiting for every tab to close first.
@@ -33,10 +37,22 @@ export default defineConfig({
         start_url: '/pisti/',
         icons: [
           {
-            src: 'favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
+            src: 'icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: 'icon-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
           },
         ],
       },

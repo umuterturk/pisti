@@ -1001,6 +1001,62 @@ body {
   color: #fff;
 }
 
+.dialog__btn--start {
+  background: #ffd54f;
+  color: #1a1a2e;
+}
+
 .dialog__btn:active {
   transform: scale(0.97);
+}
+
+.picker {
+  max-width: 340px;
+}
+
+.picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  padding-right: 2px;
+}
+
+.picker__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #f5f0e6;
+  cursor: pointer;
+  text-align: left;
+}
+
+.picker__item:active {
+  transform: scale(0.98);
+}
+
+.picker__item--active {
+  border-color: rgba(255, 213, 79, 0.6);
+  background: rgba(255, 213, 79, 0.14);
+}
+
+.picker__name {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.picker__diff {
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  white-space: nowrap;
 }

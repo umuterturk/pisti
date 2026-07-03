@@ -12,9 +12,13 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { GameOver } from './components/GameOver'
 import { Hud } from './components/Hud'
 import { OpponentArea } from './components/OpponentArea'
+import { OpponentPicker } from './components/OpponentPicker'
 import { PlayerHand } from './components/PlayerHand'
+import { StartScreen } from './components/StartScreen'
 import { TablePile, type PileVisuals } from './components/TablePile'
 import { ScorePopLayer, type ScorePop } from './components/ScorePopLayer'
+import { getBot } from './game/bots/registry'
+import { runTournament } from './game/bots/selfplay'
 import type { Card as CardType } from './game/cards'
 import { useGame, type PlayResult } from './game/useGame'
 import {
@@ -26,7 +30,6 @@ import {
 import { TIMING } from './motion/params'
 
 const PLAYER_NAME = 'Sen'
-const OPPONENT_NAME = 'Rakip'
 
 const CAPTURE_TOTAL_MS = (TIMING.capturePause + TIMING.captureMove) * 1000 + 120
 
@@ -53,6 +56,7 @@ export default function App() {
     canPlayerAct,
     nextGame,
     resign,
+    chooseBot,
     reorderPlayerHand,
     playPlayerCard,
     playOpponentCard,
@@ -60,6 +64,9 @@ export default function App() {
   } = useGame()
 
   const [resignOpen, setResignOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [started, setStarted] = useState(false)
+  const opponentName = getBot(state.activeBotId).name
 
   const pileRef = useRef<HTMLDivElement>(null)
   const opponentHandRef = useRef<HTMLDivElement>(null)
@@ -327,6 +334,24 @@ export default function App() {
     resign()
   }, [resetTransient, resign])
 
+  const handleSelectBot = useCallback(
+    (botId: string) => {
+      setPickerOpen(false)
+      resetTransient()
+      chooseBot(botId)
+    },
+    [resetTransient, chooseBot],
+  )
+
+  const handleStart = useCallback(
+    (botId: string) => {
+      resetTransient()
+      chooseBot(botId)
+      setStarted(true)
+    },
+    [resetTransient, chooseBot],
+  )
+
   // Dev-only: replay the pişti capture animation without touching game state.
   const triggerPistiDemo = useCallback((streak = 1) => {
     if (flying || capture) return
@@ -384,10 +409,10 @@ export default function App() {
   const canHint = canPlayerAct && !flying && !capture && !dealing
   const topCard = state.pile.length > 0 ? state.pile[state.pile.length - 1] : null
   const matchRank = canHint && topCard ? topCard.rank : null
-  const playerHasJack = canHint && state.playerHand.some((c) => c.rank === 'J')
+  const playerHasJack = canHint && state.pile.length > 0 && state.playerHand.some((c) => c.rank === 'J')
   const playerHasMatch =
     matchRank != null && state.playerHand.some((c) => c.rank === matchRank)
-  const highlightPileTop = playerHasMatch || (playerHasJack && state.pile.length > 0)
+  const highlightPileTop = playerHasMatch || playerHasJack
 
   return (
     <div
@@ -405,7 +430,7 @@ export default function App() {
       >
         <Hud
           side="top"
-          name={OPPONENT_NAME}
+          name={opponentName}
           score={liveScore.opponent.total}
           pisti={state.opponentPisti}
           cards={state.opponentCollected.length}
@@ -458,6 +483,13 @@ export default function App() {
         <div className="side-hud__label">Deste {state.deck.length}</div>
         <button
           className="side-hud__btn"
+          onClick={() => setPickerOpen(true)}
+          aria-label="Rakip seç"
+        >
+          Rakip
+        </button>
+        <button
+          className="side-hud__btn"
           onClick={() => setResignOpen(true)}
           aria-label="Oyunu bırak"
         >
@@ -476,6 +508,20 @@ export default function App() {
             Pişti?
           </button>
         )}
+        {import.meta.env.DEV && (
+          <button
+            className="side-hud__btn side-hud__btn--debug"
+            onClick={() =>
+              runTournament(
+                ['random', 'greedy', 'defensive', 'jackSaver', 'mc16', 'mc40'],
+                200,
+              )
+            }
+            aria-label="Botları karşılaştır"
+          >
+            Turnuva
+          </button>
+        )}
       </div>
 
       <FlyingCardLayer flying={flying} />
@@ -486,10 +532,21 @@ export default function App() {
           scoreboard={state.scoreboard}
           games={state.games}
           playerName={PLAYER_NAME}
-          opponentName={OPPONENT_NAME}
+          opponentName={opponentName}
           onNewGame={handleNextGame}
         />
       )}
+      <StartScreen
+        open={!started}
+        defaultBotId={state.activeBotId}
+        onStart={handleStart}
+      />
+      <OpponentPicker
+        open={pickerOpen}
+        activeBotId={state.activeBotId}
+        onSelect={handleSelectBot}
+        onClose={() => setPickerOpen(false)}
+      />
       <ConfirmDialog
         open={resignOpen}
         title="Oyunu bırak"

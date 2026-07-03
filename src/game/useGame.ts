@@ -1,11 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { chooseOpponentCard } from './ai'
+import { getBot, DEFAULT_BOT_ID } from './bots/registry'
+import type { BotContext } from './bots/types'
 import { dealNewGame, type Card } from './cards'
-import {
-  checkCapture,
-  computeScoreboard,
-  type Scoreboard,
-} from './rules'
+import { applyMove, finalScore, HAND_SIZE, isTerminal, type SimState } from './engine'
+import { checkCapture, type Scoreboard } from './rules'
+import { randomRng } from './rng'
 
 export type Turn = 'player' | 'opponent'
 export type GamePhase = 'idle' | 'animating'
@@ -51,9 +50,9 @@ export interface GameState {
   /** Bumped whenever cards are freshly dealt into hands (initial + refills), so
    *  the UI can play the deal-in animation and pause turns until it finishes. */
   dealSerial: number
+  /** Id of the opponent bot profile for this match (persists between hands). */
+  activeBotId: string
 }
-
-const HAND_SIZE = 4
 
 // Monotonic counter so every fresh deal produces a unique serial, even if two
 // deals happen within the same millisecond.
@@ -63,7 +62,14 @@ function nextDealSerial(): number {
   return dealCounter
 }
 
-function freshState(games: MatchScore = { player: 0, opponent: 0 }, gameNumber = 1): GameState {
+function freshState(
+  games: MatchScore = { player: 0, opponent: 0 },
+  gameNumber = 1,
+  // The winner of the previous game leads the next one (game rule). Defaults to
+  // the player for the very first game of a match.
+  startingTurn: Turn = 'player',
+  activeBotId: string = DEFAULT_BOT_ID,
+): GameState {
   const { playerHand, opponentHand, table, deck } = dealNewGame(HAND_SIZE)
   return {
     deck,
@@ -78,85 +84,89 @@ function freshState(games: MatchScore = { player: 0, opponent: 0 }, gameNumber =
     opponentDoublePisti: 0,
     pistiStreak: 0,
     lastCapturer: null,
-    turn: 'player',
+    turn: startingTurn,
     phase: 'idle',
     gameOver: false,
     scoreboard: null,
     games,
     gameNumber,
     dealSerial: nextDealSerial(),
+    activeBotId,
   }
 }
 
-function other(turn: Turn): Turn {
-  return turn === 'player' ? 'opponent' : 'player'
+// Project the rule-relevant slice of the React game state into the pure engine's
+// SimState, so `commit` can advance play through the same code the bots simulate.
+function toSimState(g: GameState): SimState {
+  return {
+    deck: g.deck,
+    playerHand: g.playerHand,
+    opponentHand: g.opponentHand,
+    pile: g.pile,
+    playerCollected: g.playerCollected,
+    opponentCollected: g.opponentCollected,
+    playerPisti: g.playerPisti,
+    opponentPisti: g.opponentPisti,
+    playerDoublePisti: g.playerDoublePisti,
+    opponentDoublePisti: g.opponentDoublePisti,
+    lastCapturer: g.lastCapturer,
+    turn: g.turn,
+  }
 }
 
 /** Applies the outcome of a play after its landing animation has finished. */
 function commit(prev: GameState, result: PlayResult): GameState {
-  const { who, playedCard, captured, pisti, doublePisti } = result
+  const who = result.who
 
-  let pile = prev.pile
-  let playerCollected = prev.playerCollected
-  let opponentCollected = prev.opponentCollected
-  let playerPisti = prev.playerPisti
-  let opponentPisti = prev.opponentPisti
-  let playerDoublePisti = prev.playerDoublePisti
-  let opponentDoublePisti = prev.opponentDoublePisti
-  let pistiStreak = prev.pistiStreak
-  let lastCapturer = prev.lastCapturer
+  // The played card was pulled from hand at throw time (so it flies away
+  // visually); put it back so the engine can resolve the move canonically —
+  // this keeps the human's game running on the exact rules the bots simulate.
+  const base = toSimState(prev)
+  const restored: SimState = {
+    ...base,
+    turn: who,
+    playerHand:
+      who === 'player' ? [...base.playerHand, result.playedCard] : base.playerHand,
+    opponentHand:
+      who === 'opponent' ? [...base.opponentHand, result.playedCard] : base.opponentHand,
+  }
+  const { next, refilled } = applyMove(restored, result.playedCard.id)
 
-  if (captured) {
-    const haul = [...prev.pile, playedCard]
-    if (who === 'player') {
-      playerCollected = [...playerCollected, ...haul]
-      if (doublePisti) playerDoublePisti += 1
-      else if (pisti) playerPisti += 1
-    } else {
-      opponentCollected = [...opponentCollected, ...haul]
-      if (doublePisti) opponentDoublePisti += 1
-      else if (pisti) opponentPisti += 1
-    }
-    // A pişti extends the combo; any other capture snaps the chain.
-    pistiStreak = pisti ? pistiStreak + 1 : 0
-    pile = []
-    lastCapturer = who
-  } else {
-    pile = [...prev.pile, playedCard]
+  // A pişti extends the combo; any other capture snaps it; a non-capture leaves
+  // it. (Purely cosmetic — the engine doesn't track it.)
+  const pistiStreak = result.captured
+    ? result.pisti
+      ? prev.pistiStreak + 1
+      : 0
+    : prev.pistiStreak
+  const dealSerial = refilled ? nextDealSerial() : prev.dealSerial
+
+  const shared = {
+    ...prev,
+    deck: next.deck,
+    playerHand: next.playerHand,
+    opponentHand: next.opponentHand,
+    playerPisti: next.playerPisti,
+    opponentPisti: next.opponentPisti,
+    playerDoublePisti: next.playerDoublePisti,
+    opponentDoublePisti: next.opponentDoublePisti,
+    pistiStreak,
+    lastCapturer: next.lastCapturer,
+    phase: 'idle' as const,
+    dealSerial,
   }
 
-  let deck = prev.deck
-  let playerHand = prev.playerHand
-  let opponentHand = prev.opponentHand
-  let dealSerial = prev.dealSerial
-
-  // Refill both hands once they are empty and the draw pile still has cards.
-  if (playerHand.length === 0 && opponentHand.length === 0 && deck.length > 0) {
-    playerHand = deck.slice(0, HAND_SIZE)
-    opponentHand = deck.slice(HAND_SIZE, HAND_SIZE * 2)
-    deck = deck.slice(HAND_SIZE * 2)
-    dealSerial = nextDealSerial()
-  }
-
-  const handsEmpty = playerHand.length === 0 && opponentHand.length === 0
-  const gameOver = handsEmpty && deck.length === 0
-
-  if (gameOver) {
-    // The last player to capture sweeps whatever remains on the table.
-    if (pile.length > 0 && lastCapturer) {
-      if (lastCapturer === 'player') playerCollected = [...playerCollected, ...pile]
-      else opponentCollected = [...opponentCollected, ...pile]
-      pile = []
+  if (isTerminal(next)) {
+    const scoreboard = finalScore(next)
+    // finalScore sweeps the table to the last capturer; mirror that in the piles
+    // we surface so the UI shows the final counts.
+    let playerCollected = next.playerCollected
+    let opponentCollected = next.opponentCollected
+    if (next.pile.length > 0 && next.lastCapturer) {
+      if (next.lastCapturer === 'player')
+        playerCollected = [...playerCollected, ...next.pile]
+      else opponentCollected = [...opponentCollected, ...next.pile]
     }
-
-    const scoreboard = computeScoreboard(
-      playerCollected,
-      opponentCollected,
-      playerPisti,
-      opponentPisti,
-      playerDoublePisti,
-      opponentDoublePisti,
-    )
 
     const games: MatchScore = {
       player: prev.games.player + (scoreboard.winner === 'player' ? 1 : 0),
@@ -164,47 +174,25 @@ function commit(prev: GameState, result: PlayResult): GameState {
     }
 
     return {
-      ...prev,
-      deck,
-      playerHand,
-      opponentHand,
-      pile,
+      ...shared,
+      pile: [],
       playerCollected,
       opponentCollected,
-      playerPisti,
-      opponentPisti,
-      playerDoublePisti,
-      opponentDoublePisti,
-      pistiStreak,
-      lastCapturer,
       turn: prev.turn,
-      phase: 'idle',
       gameOver: true,
       scoreboard,
       games,
-      dealSerial,
     }
   }
 
   return {
-    ...prev,
-    deck,
-    playerHand,
-    opponentHand,
-    pile,
-    playerCollected,
-    opponentCollected,
-    playerPisti,
-    opponentPisti,
-    playerDoublePisti,
-    opponentDoublePisti,
-    pistiStreak,
-    lastCapturer,
-    turn: other(who),
-    phase: 'idle',
+    ...shared,
+    pile: next.pile,
+    playerCollected: next.playerCollected,
+    opponentCollected: next.opponentCollected,
+    turn: next.turn,
     gameOver: false,
     scoreboard: null,
-    dealSerial,
   }
 }
 
@@ -221,26 +209,38 @@ export function useGame() {
     setState(next)
   }, [])
 
-  // Full match reset (scores back to 0-0).
+  // Full match reset (scores back to 0-0), keeping the chosen opponent.
   const newGame = useCallback(() => {
-    apply(freshState())
+    apply(freshState({ player: 0, opponent: 0 }, 1, 'player', stateRef.current.activeBotId))
   }, [apply])
 
-  // Deal the next game while keeping the running match score.
+  // Deal the next game while keeping the running match score. The winner of the
+  // game just finished leads the next one; a tie keeps the previous leader.
   const nextGame = useCallback(() => {
     const prev = stateRef.current
-    apply(freshState(prev.games, prev.gameNumber + 1))
+    const winner = prev.scoreboard?.winner
+    const startingTurn: Turn =
+      winner === 'player' || winner === 'opponent' ? winner : prev.turn
+    apply(freshState(prev.games, prev.gameNumber + 1, startingTurn, prev.activeBotId))
   }, [apply])
 
-  // Concede the current game: opponent takes the game, then deal the next one.
+  // Concede the current game: opponent takes the game, so they lead the next one.
   const resign = useCallback(() => {
     const prev = stateRef.current
     const games: MatchScore = {
       player: prev.games.player,
       opponent: prev.games.opponent + 1,
     }
-    apply(freshState(games, prev.gameNumber + 1))
+    apply(freshState(games, prev.gameNumber + 1, 'opponent', prev.activeBotId))
   }, [apply])
+
+  // Switch opponents: starts a fresh match (0-0) against the chosen bot.
+  const chooseBot = useCallback(
+    (botId: string) => {
+      apply(freshState({ player: 0, opponent: 0 }, 1, 'player', botId))
+    },
+    [apply],
+  )
 
   const reorderPlayerHand = useCallback(
     (newOrder: string[]) => {
@@ -304,7 +304,17 @@ export function useGame() {
       })
       return null
     }
-    const cardId = chooseOpponentCard(prev.opponentHand, prev.pile)
+    const bot = getBot(prev.activeBotId)
+    const ctx: BotContext = {
+      hand: prev.opponentHand,
+      pile: prev.pile,
+      myCollected: prev.opponentCollected,
+      oppCollected: prev.playerCollected,
+      deckCount: prev.deck.length,
+      oppHandCount: prev.playerHand.length,
+      rng: randomRng(),
+    }
+    const cardId = bot.strategy(ctx)
     const card = prev.opponentHand.find((c) => c.id === cardId)
     if (!card) return null
 
@@ -363,6 +373,7 @@ export function useGame() {
     newGame,
     nextGame,
     resign,
+    chooseBot,
     reorderPlayerHand,
     playPlayerCard,
     playOpponentCard,

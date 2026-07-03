@@ -432,7 +432,6 @@ export default function App() {
           side="top"
           name={opponentName}
           score={liveScore.opponent.total}
-          pisti={state.opponentPisti}
           cards={state.opponentCollected.length}
           active={state.turn === 'opponent'}
           scoreRef={opponentScoreRef}
@@ -466,7 +465,6 @@ export default function App() {
           side="bottom"
           name={PLAYER_NAME}
           score={liveScore.player.total}
-          pisti={state.playerPisti}
           cards={state.playerCollected.length}
           active={state.turn === 'player'}
           scoreRef={playerScoreRef}

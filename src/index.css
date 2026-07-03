@@ -114,11 +114,11 @@ body {
 
 /* Compact player HUD (used for both sides) */
 .hud {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 6px 74px 6px 10px;
   margin: 0 2px;
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.22);
@@ -169,33 +169,92 @@ body {
   box-shadow: 0 0 8px #6ee787;
 }
 
-.hud__stats {
-  display: flex;
-  gap: 4px;
-}
-
-.hud__stat {
+/* Circular score badge that spills out past the HUD tray toward the table. */
+.hud__badge {
+  position: absolute;
+  right: 12px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 40px;
-  padding: 2px 6px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.28);
+  justify-content: center;
+  gap: 0;
+  background: radial-gradient(circle at 50% 30%, rgba(30, 92, 56, 0.62), rgba(9, 34, 20, 0.55) 72%);
+  border: 2px solid rgba(255, 213, 79, 0.9);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.45),
+    inset 0 1px 2px rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(2px);
+  z-index: 2;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.hud__stat-val {
-  font-size: 0.9rem;
+/* Opponent badge overflows downward, player badge upward — both toward the table. */
+.hud--top .hud__badge {
+  top: 8px;
+}
+
+.hud--bottom .hud__badge {
+  bottom: 8px;
+}
+
+.hud--active .hud__badge {
+  border-color: rgba(110, 231, 135, 0.85);
+  box-shadow:
+    0 0 0 2px rgba(110, 231, 135, 0.55),
+    0 0 14px rgba(110, 231, 135, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.hud__score {
+  display: inline-flex;
+  font-size: 1.5rem;
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1;
+  color: #ffd54f;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+/* One spinning digit column, clipped to a single glyph height. */
+.reel {
+  display: inline-block;
+  overflow: hidden;
+  height: 1em;
+  line-height: 1;
+  vertical-align: top;
+}
+
+.reel__strip {
+  display: flex;
+  flex-direction: column;
+}
+
+.reel__cell {
+  height: 1em;
+  line-height: 1;
+  text-align: center;
+}
+
+.hud__cards {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  margin-top: 1px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  color: #d6efdf;
   font-variant-numeric: tabular-nums;
 }
 
-.hud__stat-label {
-  font-size: 0.56rem;
-  letter-spacing: 0.04em;
+.hud__cards-label {
+  font-size: 0.44rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .opponent-wrap {

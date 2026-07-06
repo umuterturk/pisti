@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, memo, type RefObject } from 'react'
 import { animate, motion, useMotionValue } from 'framer-motion'
 import type { Card as CardType } from '../game/cards'
 import { CARD_HEIGHT, CARD_WIDTH, LANDING, SPRING } from '../motion/params'
@@ -52,17 +52,7 @@ export type PileVisuals = Record<string, PileCardVisual>
 // start of a hand, no recorded visual) fly in from the centre HUD.
 const TOP_CARD_SCALE = 1.1
 
-function TableCard({
-  card,
-  placement,
-  peekPlacement,
-  zIndex,
-  dealIn,
-  dealFromRef,
-  dealDelay,
-  highlightRank = false,
-  emphasize = false,
-}: {
+interface TableCardProps {
   card: CardType
   placement: PileCardVisual
   peekPlacement?: PileCardVisual | null
@@ -72,7 +62,19 @@ function TableCard({
   dealDelay: number
   highlightRank?: boolean
   emphasize?: boolean
-}) {
+}
+
+function TableCardComponent({
+  card,
+  placement,
+  peekPlacement,
+  zIndex,
+  dealIn,
+  dealFromRef,
+  dealDelay,
+  highlightRank = false,
+  emphasize = false,
+}: TableCardProps) {
   const ref = useRef<HTMLDivElement>(null)
   const x = useMotionValue(placement.offsetX)
   const y = useMotionValue(placement.offsetY)
@@ -167,6 +169,28 @@ function TableCard({
   )
 }
 
+const TableCard = memo(
+  TableCardComponent,
+  (prev, next) =>
+    prev.card.id === next.card.id &&
+    prev.zIndex === next.zIndex &&
+    prev.dealIn === next.dealIn &&
+    prev.dealDelay === next.dealDelay &&
+    prev.highlightRank === next.highlightRank &&
+    prev.emphasize === next.emphasize &&
+    prev.dealFromRef === next.dealFromRef &&
+    (prev.peekPlacement === next.peekPlacement ||
+      (prev.peekPlacement != null &&
+        next.peekPlacement != null &&
+        prev.peekPlacement.offsetX === next.peekPlacement.offsetX &&
+        prev.peekPlacement.offsetY === next.peekPlacement.offsetY &&
+        prev.peekPlacement.rotation === next.peekPlacement.rotation)) &&
+    (prev.placement === next.placement ||
+      (prev.placement.offsetX === next.placement.offsetX &&
+        prev.placement.offsetY === next.placement.offsetY &&
+        prev.placement.rotation === next.placement.rotation)),
+)
+
 interface TablePileProps {
   cards: CardType[]
   visuals?: PileVisuals
@@ -181,8 +205,7 @@ interface TablePileProps {
   capturing?: boolean
 }
 
-export const TablePile = forwardRef<HTMLDivElement, TablePileProps>(
-  function TablePile({ cards, visuals, highlight = false, highlightTopRank = false, showPlayPrompt = false, dealFromRef, capturing = false }, ref) {
+function TablePileComponent({ cards, visuals, highlight = false, highlightTopRank = false, showPlayPrompt = false, dealFromRef, capturing = false }: TablePileProps, ref: React.Ref<HTMLDivElement>) {
     const shown = capturing ? [] : cards
     // Index among the freshly-dealt (no recorded visual) cards, for stagger.
     let dealIndex = 0
@@ -257,5 +280,6 @@ export const TablePile = forwardRef<HTMLDivElement, TablePileProps>(
         </div>
       </div>
     )
-  },
-)
+}
+
+export const TablePile = memo(forwardRef<HTMLDivElement, TablePileProps>(TablePileComponent))

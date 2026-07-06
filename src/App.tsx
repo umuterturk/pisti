@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PanInfo } from 'framer-motion'
 import { CaptureLayer, type CaptureState } from './components/CaptureLayer'
 import { FlyingCardLayer } from './components/FlyingCardLayer'
@@ -141,6 +141,13 @@ export default function App() {
     // Only relevant once, right after mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const canPlayerActRef = useRef(canPlayerAct)
+  canPlayerActRef.current = canPlayerAct
+  const flyingStateRef = useRef(flying)
+  flyingStateRef.current = flying
+  const captureStateRef = useRef(capture)
+  captureStateRef.current = capture
 
   const getPileTarget = useCallback(() => {
     const pileEl = pileRef.current?.querySelector('.table-pile__stack')
@@ -286,12 +293,16 @@ export default function App() {
     (card: CardType, info: PanInfo, element: HTMLElement) => {
       log('handlePlayerThrow', {
         card: card.id,
-        canPlayerAct,
-        flying: !!flying,
-        capture: !!capture,
+        canPlayerAct: canPlayerActRef.current,
+        flying: !!flyingStateRef.current,
+        capture: !!captureStateRef.current,
       })
-      if (!canPlayerAct || flying || capture) {
-        log('handlePlayerThrow BLOCKED', { canPlayerAct, flying: !!flying, capture: !!capture })
+      if (!canPlayerActRef.current || flyingStateRef.current || captureStateRef.current) {
+        log('handlePlayerThrow BLOCKED', {
+          canPlayerAct: canPlayerActRef.current,
+          flying: !!flyingStateRef.current,
+          capture: !!captureStateRef.current,
+        })
         return
       }
 
@@ -311,7 +322,7 @@ export default function App() {
         createFlyingCardFromThrow(card, element, target, info.velocity, info.offset, result.pisti),
       )
     },
-    [canPlayerAct, flying, capture, getPileTarget, playPlayerCard, launchFlight],
+    [getPileTarget, playPlayerCard, launchFlight],
   )
 
   const triggerOpponentThrow = useCallback(() => {
@@ -421,6 +432,14 @@ export default function App() {
     [resetTransient, chooseBot],
   )
 
+  const handleOpponentScoreClick = useCallback(() => {
+    setScoreInfoSide('opponent')
+  }, [])
+
+  const handlePlayerScoreClick = useCallback(() => {
+    setScoreInfoSide('player')
+  }, [])
+
   // Dev-only: replay the pişti capture animation without touching game state.
   const triggerPistiDemo = useCallback((streak = 1) => {
     if (flying || capture) return
@@ -466,14 +485,25 @@ export default function App() {
     }
   }, [])
 
-  const liveScore = computeScoreboard(
-    state.playerCollected,
-    state.opponentCollected,
-    state.playerPisti,
-    state.opponentPisti,
-    state.playerDoublePisti,
-    state.opponentDoublePisti,
-    false,
+  const liveScore = useMemo(
+    () =>
+      computeScoreboard(
+        state.playerCollected,
+        state.opponentCollected,
+        state.playerPisti,
+        state.opponentPisti,
+        state.playerDoublePisti,
+        state.opponentDoublePisti,
+        false,
+      ),
+    [
+      state.playerCollected,
+      state.opponentCollected,
+      state.playerPisti,
+      state.opponentPisti,
+      state.playerDoublePisti,
+      state.opponentDoublePisti,
+    ],
   )
 
   // Capture hint: while the player can act, highlight the rank of any hand card
@@ -518,7 +548,7 @@ export default function App() {
           active={state.turn === 'opponent'}
           thinking={opponentThinking}
           scoreRef={opponentScoreRef}
-          onScoreClick={() => setScoreInfoSide('opponent')}
+          onScoreClick={handleOpponentScoreClick}
         />
         <OpponentArea handCount={state.opponentHand.length} dealFromRef={sideHudRef} />
       </div>
@@ -552,7 +582,7 @@ export default function App() {
           cards={state.playerCollected.length}
           active={state.turn === 'player'}
           scoreRef={playerScoreRef}
-          onScoreClick={() => setScoreInfoSide('player')}
+          onScoreClick={handlePlayerScoreClick}
         />
       </div>
 

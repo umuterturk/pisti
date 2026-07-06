@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, memo, type RefObject } from 'react'
 import type { Card as CardType } from '../game/cards'
 import { computeHandLayout, findReorderIndex } from '../motion/handLayout'
 import { HandCard } from './HandCard'
@@ -16,7 +16,7 @@ interface PlayerHandProps {
   onThrow: (card: CardType, info: PanInfo, element: HTMLElement) => void
 }
 
-export function PlayerHand({ cards, disabled, matchRank, dealFromRef, onReorder, onThrow }: PlayerHandProps) {
+function PlayerHandComponent({ cards, disabled, matchRank, dealFromRef, onReorder, onThrow }: PlayerHandProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(360)
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -46,14 +46,26 @@ export function PlayerHand({ cards, disabled, matchRank, dealFromRef, onReorder,
   }, [cards, previewOrder])
 
   const activeIndex = activeId ? previewOrder.indexOf(activeId) : null
-  const baseSlots = computeHandLayout(orderedCards.length, containerWidth, activeIndex)
+  const baseSlots = useMemo(
+    () => computeHandLayout(orderedCards.length, containerWidth, activeIndex),
+    [orderedCards.length, containerWidth, activeIndex],
+  )
+
+  const previewOrderRef = useRef(previewOrder)
+  previewOrderRef.current = previewOrder
+  const baseSlotsRef = useRef(baseSlots)
+  baseSlotsRef.current = baseSlots
+  const cardsRef = useRef(cards)
+  cardsRef.current = cards
+  const onReorderRef = useRef(onReorder)
+  onReorderRef.current = onReorder
 
   const handleDragMove = useCallback(
     (cardId: string, dragX: number) => {
-      const currentIndex = previewOrder.indexOf(cardId)
+      const currentIndex = previewOrderRef.current.indexOf(cardId)
       if (currentIndex === -1) return
 
-      const newIndex = findReorderIndex(dragX, baseSlots, currentIndex)
+      const newIndex = findReorderIndex(dragX, baseSlotsRef.current, currentIndex)
       if (newIndex === currentIndex) return
 
       setPreviewOrder((prev) => {
@@ -63,17 +75,17 @@ export function PlayerHand({ cards, disabled, matchRank, dealFromRef, onReorder,
         return next
       })
     },
-    [previewOrder, baseSlots],
+    [],
   )
 
   const handleReorderCommit = useCallback(
     (cardId: string) => {
-      onReorder(previewOrder)
-      if (!previewOrder.includes(cardId)) {
-        onReorder(cards.map((c) => c.id))
+      onReorderRef.current(previewOrderRef.current)
+      if (!previewOrderRef.current.includes(cardId)) {
+        onReorderRef.current(cardsRef.current.map((c) => c.id))
       }
     },
-    [onReorder, previewOrder, cards],
+    [],
   )
 
   return (
@@ -102,3 +114,5 @@ export function PlayerHand({ cards, disabled, matchRank, dealFromRef, onReorder,
     </div>
   )
 }
+
+export const PlayerHand = memo(PlayerHandComponent)

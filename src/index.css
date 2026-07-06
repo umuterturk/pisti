@@ -61,6 +61,12 @@ body {
   backdrop-filter: blur(4px);
 }
 
+/* Weak devices: drop the per-frame backdrop blur, compensate with more opacity. */
+.perf-lite .side-hud {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: none;
+}
+
 .side-hud__match {
   display: flex;
   align-items: baseline;
@@ -240,6 +246,12 @@ body {
   transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.12s ease;
 }
 
+/* Weak devices: the badge already has a solid radial background, so the blur
+   can go with no visible compensation needed. */
+.perf-lite .hud__badge {
+  backdrop-filter: none;
+}
+
 .hud__badge:active {
   transform: scale(0.94);
 }
@@ -378,7 +390,17 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: filter 0.15s ease;
+}
+
+.table-pile::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 215, 80, 0.45) 0%, rgba(255, 215, 80, 0) 70%);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
 }
 
 .table-pile__stack {
@@ -387,8 +409,11 @@ body {
   height: 100px;
 }
 
+.table-pile--highlight::after {
+  opacity: 1;
+}
+
 .table-pile--highlight {
-  filter: drop-shadow(0 0 16px rgba(255, 215, 80, 0.55));
   animation: pile-pulse 0.35s ease-out;
 }
 
@@ -459,6 +484,12 @@ body {
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
 }
 
+/* Weak devices: the drop-shadow forces a card re-raster on every drag/tap-scale
+   frame. Drop it here; the stronger .card box-shadow below compensates. */
+.perf-lite .hand-card {
+  filter: none;
+}
+
 .hand-card:active {
   cursor: grabbing;
 }
@@ -472,6 +503,14 @@ body {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.8),
     0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Weak devices: a touch more depth to make up for hand cards losing their
+   drop-shadow filter (see .perf-lite .hand-card). */
+.perf-lite .card {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 3px 8px rgba(0, 0, 0, 0.25);
 }
 
 .card--back {
@@ -857,6 +896,15 @@ body {
   backdrop-filter: blur(5px);
   padding: 20px;
   overflow: hidden;
+}
+
+/* Weak devices: skip blurring the whole backdrop (confetti animates over it on
+   every win); a more opaque base hides the busy game behind it instead. */
+.perf-lite .game-over {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(20, 60, 38, 0.5) 0%, rgba(4, 12, 8, 0.9) 75%),
+    rgba(4, 12, 8, 0.92);
+  backdrop-filter: none;
 }
 
 .game-over__confetti {

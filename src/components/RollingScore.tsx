@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import { memo, type RefObject } from 'react'
 import { motion } from 'framer-motion'
 
 const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -6,7 +6,7 @@ const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 // A single vertical reel: a 0-9 strip shifted so the wanted digit sits in the
 // viewport. Increasing values scroll the strip upward through the in-between
 // digits, giving the slot-machine roll.
-function Reel({ digit }: { digit: number }) {
+const Reel = memo(function Reel({ digit }: { digit: number }) {
   return (
     <span className="reel">
       <motion.span
@@ -22,7 +22,7 @@ function Reel({ digit }: { digit: number }) {
       </motion.span>
     </span>
   )
-}
+})
 
 interface RollingScoreProps {
   value: number
@@ -30,7 +30,7 @@ interface RollingScoreProps {
   innerRef?: RefObject<HTMLSpanElement | null>
 }
 
-export function RollingScore({ value, className, innerRef }: RollingScoreProps) {
+export const RollingScore = memo(function RollingScore({ value, className, innerRef }: RollingScoreProps) {
   const digits = String(Math.max(0, Math.round(value))).split('')
   return (
     <span className={className} ref={innerRef} aria-label={String(value)}>
@@ -41,4 +41,4 @@ export function RollingScore({ value, className, innerRef }: RollingScoreProps) 
       ))}
     </span>
   )
-}
+})

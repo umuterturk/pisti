@@ -4,7 +4,7 @@ import {
   useMotionValue,
   type PanInfo,
 } from 'framer-motion'
-import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, memo, type RefObject } from 'react'
 import type { Card as CardType } from '../game/cards'
 import { classifyRelease } from '../motion/gesture'
 import { type HandSlot } from '../motion/handLayout'
@@ -27,7 +27,7 @@ interface HandCardProps {
   onThrow: (card: CardType, info: PanInfo, element: HTMLElement) => void
 }
 
-export function HandCard({
+function HandCardComponent({
   card,
   slot,
   disabled = false,
@@ -203,3 +203,21 @@ export function HandCard({
     </motion.div>
   )
 }
+
+export const HandCard = memo(
+  HandCardComponent,
+  (prev, next) =>
+    prev.card.id === next.card.id &&
+    prev.disabled === next.disabled &&
+    prev.highlightRank === next.highlightRank &&
+    prev.dealDelay === next.dealDelay &&
+    prev.dealFromRef === next.dealFromRef &&
+    prev.onActiveChange === next.onActiveChange &&
+    prev.onDragMove === next.onDragMove &&
+    prev.onReorderCommit === next.onReorderCommit &&
+    prev.onThrow === next.onThrow &&
+    prev.slot.x === next.slot.x &&
+    prev.slot.y === next.slot.y &&
+    prev.slot.rotate === next.slot.rotate &&
+    prev.slot.zIndex === next.slot.zIndex,
+)

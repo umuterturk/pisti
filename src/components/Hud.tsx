@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import { memo, type RefObject } from 'react'
 import { RollingScore } from './RollingScore'
 
 interface HudProps {
@@ -15,7 +15,7 @@ interface HudProps {
   onScoreClick?: () => void
 }
 
-export function Hud({ name, score, cards, active, side, thinking, scoreRef, onScoreClick }: HudProps) {
+function HudComponent({ name, score, cards, active, side, thinking, scoreRef, onScoreClick }: HudProps) {
   const initial = name.charAt(0).toUpperCase()
   return (
     <div className={`hud hud--${side} ${active ? 'hud--active' : ''}`}>
@@ -52,3 +52,5 @@ export function Hud({ name, score, cards, active, side, thinking, scoreRef, onSc
     </div>
   )
 }
+
+export const Hud = memo(HudComponent)

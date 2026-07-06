@@ -1,5 +1,5 @@
 import { animate, motion, useMotionValue } from 'framer-motion'
-import { useLayoutEffect, useRef, type RefObject } from 'react'
+import { useLayoutEffect, useMemo, useRef, memo, type RefObject } from 'react'
 import { Card } from './Card'
 import {
   OPP_CARD_HEIGHT,
@@ -13,7 +13,7 @@ interface OpponentAreaProps {
 }
 
 // A single face-down opponent card that flies in from the centre HUD.
-function OpponentCard({
+const OpponentCard = memo(function OpponentCard({
   index,
   dealFromRef,
 }: {
@@ -50,35 +50,41 @@ function OpponentCard({
       <Card faceDown width={OPP_CARD_WIDTH} height={OPP_CARD_HEIGHT} />
     </motion.div>
   )
-}
+})
 
 // Opponent's hand: bigger backs, fanned and cropped at the top edge. New cards
 // are dealt in from the centre HUD.
-export function OpponentArea({ handCount, dealFromRef }: OpponentAreaProps) {
+function OpponentAreaComponent({ handCount, dealFromRef }: OpponentAreaProps) {
   const overlap = OPP_CARD_WIDTH * 0.46
   const totalWidth = OPP_CARD_WIDTH + overlap * Math.max(0, handCount - 1)
   const visibleHeight = Math.round(OPP_CARD_HEIGHT * OPP_VISIBLE_RATIO)
 
+  const handStyle = useMemo(() => ({ width: totalWidth, height: visibleHeight }), [totalWidth, visibleHeight])
+
+  const cards = useMemo(
+    () =>
+      Array.from({ length: handCount }, (_, i) => ({
+        index: i,
+        style: {
+          left: i * overlap,
+          transform: `rotate(${5 - (i / Math.max(1, handCount - 1)) * 10}deg)`,
+          zIndex: i,
+        },
+      })),
+    [handCount, overlap],
+  )
+
   return (
     <div className="opponent-area">
-      <div
-        className="opponent-area__hand"
-        style={{ width: totalWidth, height: visibleHeight }}
-      >
-        {Array.from({ length: handCount }, (_, i) => (
-          <div
-            key={i}
-            className="opponent-area__card"
-            style={{
-              left: i * overlap,
-              transform: `rotate(${5 - (i / Math.max(1, handCount - 1)) * 10}deg)`,
-              zIndex: i,
-            }}
-          >
-            <OpponentCard index={i} dealFromRef={dealFromRef} />
+      <div className="opponent-area__hand" style={handStyle}>
+        {cards.map(({ index, style }) => (
+          <div key={index} className="opponent-area__card" style={style}>
+            <OpponentCard index={index} dealFromRef={dealFromRef} />
           </div>
         ))}
       </div>
     </div>
   )
 }
+
+export const OpponentArea = memo(OpponentAreaComponent)

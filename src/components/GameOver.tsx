@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Card } from '../game/cards'
 import { scoreBreakdown, type Scoreboard, type SideScore } from '../game/rules'
 import type { MatchScore } from '../game/useGame'
+import { isWeakDevice } from '../perf/deviceTier'
 
 interface GameOverProps {
   scoreboard: Scoreboard
@@ -110,10 +111,11 @@ function ScoreColumn({
 const CONFETTI_COLORS = ['#ffd54f', '#ff8a1f', '#7be7a0', '#66d3ff', '#ff5db1', '#ffffff']
 
 function Confetti() {
+  const count = isWeakDevice() ? 14 : 26
   return (
     <div className="game-over__confetti" aria-hidden="true">
-      {Array.from({ length: 26 }, (_, i) => {
-        const left = (i / 26) * 100 + (i % 3) * 4
+      {Array.from({ length: count }, (_, i) => {
+        const left = (i / count) * 100 + (i % 3) * 4
         const color = CONFETTI_COLORS[i % CONFETTI_COLORS.length]
         const delay = (i % 7) * 0.12
         const drift = (i % 2 === 0 ? 1 : -1) * (20 + (i % 5) * 14)

@@ -28,8 +28,45 @@ export const ERROR = [10, 20, 10]
 /** Win celebration */
 export const WIN = [50, 80, 50]
 
+// Detect iOS: Vibration API doesn't work on iOS Safari/PWAs
+function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+}
+
 export function vibrate(pattern: number | number[]) {
-  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+  if (typeof navigator === 'undefined') return
+
+  // Try Vibration API (works on Android, not iOS)
+  if (navigator.vibrate) {
     navigator.vibrate(pattern)
+    return
+  }
+
+  // iOS fallback: play a subtle sound as haptic alternative
+  if (isIOS()) {
+    playHapticSound()
+  }
+}
+
+// Silent haptic feedback via Web Audio API (iOS fallback)
+function playHapticSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+
+    // Very short, quiet click/pop sound (80Hz sine wave, 20ms)
+    osc.frequency.value = 80
+    gain.gain.setValueAtTime(0.05, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.02)
+
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.02)
+  } catch {
+    // Silently fail if audio context unavailable
   }
 }

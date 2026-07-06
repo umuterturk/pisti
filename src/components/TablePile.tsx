@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type RefObjec
 import { animate, motion, useMotionValue } from 'framer-motion'
 import type { Card as CardType } from '../game/cards'
 import { CARD_HEIGHT, CARD_WIDTH, LANDING, SPRING } from '../motion/params'
+import { vibrate, TAP } from '../game/haptics'
 import { Card } from './Card'
 
 function seededRandom(seed: string): number {
@@ -188,6 +189,7 @@ export const TablePile = forwardRef<HTMLDivElement, TablePileProps>(
 
     const [peekPlacements, setPeekPlacements] = useState<PileVisuals | null>(null)
     const peekTimerRef = useRef<number | null>(null)
+    const lastTapTimeRef = useRef(0)
 
     useEffect(() => {
       return () => {
@@ -197,6 +199,7 @@ export const TablePile = forwardRef<HTMLDivElement, TablePileProps>(
 
     const handlePeek = () => {
       if (shown.length < 2) return
+      vibrate(TAP)
       const next: PileVisuals = {}
       for (const card of shown) next[card.id] = randomPeekPlacement()
       setPeekPlacements(next)
@@ -207,11 +210,20 @@ export const TablePile = forwardRef<HTMLDivElement, TablePileProps>(
       }, PEEK_DURATION_MS)
     }
 
+    const handleTouchEnd = () => {
+      const now = Date.now()
+      if (now - lastTapTimeRef.current < 300) {
+        handlePeek()
+      }
+      lastTapTimeRef.current = now
+    }
+
     return (
       <div
         className={`table-pile ${highlight ? 'table-pile--highlight' : ''}`}
         ref={ref}
         onDoubleClick={handlePeek}
+        onTouchEnd={handleTouchEnd}
       >
         <div className="table-pile__stack">
           {!capturing && cards.length === 0 && showPlayPrompt && (

@@ -9,6 +9,7 @@ import type { Card as CardType } from '../game/cards'
 import { classifyRelease } from '../motion/gesture'
 import { type HandSlot } from '../motion/handLayout'
 import { HAND_CARD_HEIGHT, HAND_CARD_WIDTH, SPRING, TIMING, TOUCH } from '../motion/params'
+import { vibrate, TAP } from '../game/haptics'
 import { Card } from './Card'
 
 interface HandCardProps {
@@ -57,6 +58,7 @@ export function HandCard({
   // True while the staggered deal-in is playing; the slot-follow effect must not
   // interrupt it (e.g. when the hand's ResizeObserver corrects the width).
   const dealingRef = useRef(false)
+  const lastTapTimeRef = useRef(0)
 
   // Deal-in animation, runs once on mount. Runs before paint so there is no
   // flash of the card at its slot before it flies in from the HUD.
@@ -146,6 +148,21 @@ export function HandCard({
     animate(rotate, slot.rotate, { ...SPRING.snapBack, duration: TIMING.snapBack })
   }
 
+  const handleTouchEnd = () => {
+    if (disabled) return
+    const now = Date.now()
+    if (now - lastTapTimeRef.current < 300 && ref.current) {
+      // Double-tap: play the card with synthetic pan info that triggers THROW
+      vibrate(TAP)
+      const syntheticInfo = {
+        offset: { x: 0, y: 0 },
+        velocity: { x: 0, y: 400 },
+      } as PanInfo
+      onThrow(card, syntheticInfo, ref.current)
+    }
+    lastTapTimeRef.current = now
+  }
+
   return (
     <motion.div
       ref={ref}
@@ -175,6 +192,7 @@ export function HandCard({
       onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
+      onTouchEnd={handleTouchEnd}
     >
       <Card
         card={card}

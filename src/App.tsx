@@ -21,6 +21,7 @@ import { ScorePopLayer, type ScorePop } from './components/ScorePopLayer'
 import { getBot } from './game/bots/registry'
 import { runTournament } from './game/bots/selfplay'
 import type { Card as CardType } from './game/cards'
+import { vibrate, TAP, CAPTURE, PISTI, DOUBLE_PISTI, TRIPLE_PISTI, QUAD_PISTI, EXTREME_PISTI, WIN } from './game/haptics'
 import {
   clearContinueParam,
   clearGame,
@@ -118,6 +119,10 @@ export default function App() {
     if (recordedHandRef.current === state.gameNumber) return
     recordedHandRef.current = state.gameNumber
     recordHandResult(state.scoreboard.winner === 'player')
+    // Haptic feedback on win
+    if (state.scoreboard.winner === 'player') {
+      vibrate(WIN)
+    }
   }, [state.gameOver, state.scoreboard, state.gameNumber])
 
   // Keep the in-progress match in storage so a page refresh can resume it;
@@ -172,6 +177,23 @@ export default function App() {
       if (result.captured) {
         captureResultRef.current = result
         setPileHighlight(true)
+
+        // Haptic feedback on capture
+        if (result.pisti) {
+          if (result.pistiStreak >= 5) {
+            vibrate(EXTREME_PISTI)
+          } else if (result.pistiStreak === 4) {
+            vibrate(QUAD_PISTI)
+          } else if (result.pistiStreak === 3) {
+            vibrate(TRIPLE_PISTI)
+          } else if (result.pistiStreak === 2) {
+            vibrate(DOUBLE_PISTI)
+          } else {
+            vibrate(PISTI)
+          }
+        } else {
+          vibrate(CAPTURE)
+        }
 
         // A pişti gets a dramatic screen shake, synced with the badge pop.
         // A double pişti shakes harder and longer.
@@ -283,6 +305,7 @@ export default function App() {
       log('playPlayerCard ->', result ? { card: result.playedCard.id, captured: result.captured } : null)
       if (!result) return
 
+      vibrate(TAP)
       launchFlight(
         result,
         createFlyingCardFromThrow(card, element, target, info.velocity, info.offset, result.pisti),

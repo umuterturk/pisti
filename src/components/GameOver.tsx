@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
-import { useEffect, useState } from 'react'
-import type { Scoreboard, SideScore } from '../game/rules'
+import { useEffect, useMemo, useState } from 'react'
+import type { Card } from '../game/cards'
+import { scoreBreakdown, type Scoreboard, type SideScore } from '../game/rules'
 import type { MatchScore } from '../game/useGame'
 
 interface GameOverProps {
@@ -8,6 +9,8 @@ interface GameOverProps {
   games: MatchScore
   playerName: string
   opponentName: string
+  playerCards: Card[]
+  opponentCards: Card[]
   onNewGame: () => void
 }
 
@@ -42,17 +45,26 @@ export function CountUp({ value, duration = 1 }: { value: number; duration?: num
 function ScoreColumn({
   label,
   side,
+  cards,
   isWinner,
   accent,
 }: {
   label: string
   side: SideScore
+  cards: Card[]
   isWinner: boolean
   accent: 'me' | 'foe'
 }) {
+  const { items } = useMemo(
+    () => scoreBreakdown(cards, side.pistiCount, side.doublePistiCount),
+    [cards, side.pistiCount, side.doublePistiCount],
+  )
+  const tenDiamonds = items.find((i) => i.kind === 'tenDiamonds')?.points ?? 0
+  const twoClubs = items.find((i) => i.kind === 'twoClubs')?.points ?? 0
+  const other = items.find((i) => i.kind === 'other')?.points ?? 0
+
   return (
     <div className={`game-over__col game-over__col--${accent}${isWinner ? ' game-over__col--winner' : ''}`}>
-      <div className="game-over__crown">{isWinner ? '👑' : ''}</div>
       <div className="game-over__name">{label}</div>
       <div className="game-over__total">
         <CountUp value={side.total} />
@@ -63,20 +75,28 @@ function ScoreColumn({
         initial="hidden"
         animate="show"
       >
+        <motion.li className="game-over__row game-over__row--ten-diamonds" variants={lineVariants}>
+          <span className="game-over__badge">10♦</span>
+          <span className="game-over__row-value">{tenDiamonds}</span>
+        </motion.li>
+        <motion.li className="game-over__row game-over__row--two-clubs" variants={lineVariants}>
+          <span className="game-over__badge">2♣</span>
+          <span className="game-over__row-value">{twoClubs}</span>
+        </motion.li>
         <motion.li variants={lineVariants}>
-          <span>Kartlar</span>
-          <span>{side.cardPoints}</span>
+          <span>Diğer</span>
+          <span>{other}</span>
+        </motion.li>
+        <motion.li variants={lineVariants}>
+          <span>
+            Pişti{side.pistiCount > 0 ? ` ×${side.pistiCount}` : ''}
+            {side.doublePistiCount > 0 ? ` · Çift ×${side.doublePistiCount}` : ''}
+          </span>
+          <span>{side.pistiPoints}</span>
         </motion.li>
         <motion.li variants={lineVariants}>
           <span>Çoğunluk</span>
           <span>{side.majorityBonus}</span>
-        </motion.li>
-        <motion.li variants={lineVariants}>
-          <span>
-            Pişti ×{side.pistiCount}
-            {side.doublePistiCount > 0 ? ` · Çift ×${side.doublePistiCount}` : ''}
-          </span>
-          <span>{side.pistiPoints}</span>
         </motion.li>
         <motion.li className="game-over__lines-sub" variants={lineVariants}>
           <span>Toplanan kart</span>
@@ -127,6 +147,8 @@ export function GameOver({
   games,
   playerName,
   opponentName,
+  playerCards,
+  opponentCards,
   onNewGame,
 }: GameOverProps) {
   const result =
@@ -192,6 +214,7 @@ export function GameOver({
           <ScoreColumn
             label={playerName}
             side={scoreboard.player}
+            cards={playerCards}
             isWinner={result === 'win'}
             accent="me"
           />
@@ -199,6 +222,7 @@ export function GameOver({
           <ScoreColumn
             label={opponentName}
             side={scoreboard.opponent}
+            cards={opponentCards}
             isWinner={result === 'lose'}
             accent="foe"
           />

@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { memo } from 'react'
 import { SUIT_COLOR, SUIT_SYMBOL, type Card as CardType } from '../game/cards'
 import { CARD_HEIGHT, CARD_WIDTH } from '../motion/params'
 
@@ -13,7 +13,7 @@ interface CardProps {
   highlightRank?: boolean
 }
 
-export function Card({
+export const Card = memo(function Card({
   card,
   faceDown = false,
   width = CARD_WIDTH,
@@ -30,12 +30,12 @@ export function Card({
 
   if (faceDown || !card) {
     return (
-      <motion.div
+      <div
         className={`card card--back ${className}`}
         style={{ width, height, borderRadius: radius, ...style }}
       >
         <div className="card__back-pattern" />
-      </motion.div>
+      </div>
     )
   }
 
@@ -45,7 +45,7 @@ export function Card({
   const rankClass = `card__rank${highlightRank ? ' card__rank--match' : ''}`
 
   return (
-    <motion.div
+    <div
       className={`card card--face ${highlightRank ? 'card--match ' : ''}${className}`}
       style={{ width, height, borderRadius: radius, ...style }}
     >
@@ -77,6 +77,6 @@ export function Card({
           {symbol}
         </span>
       </span>
-    </motion.div>
+    </div>
   )
-}
+})

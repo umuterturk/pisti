@@ -87,7 +87,8 @@ export function PlayerHand({ cards, disabled, matchRank, dealFromRef, onReorder,
             disabled={disabled}
             highlightRank={
               !disabled &&
-              (card.rank === 'J' || (matchRank != null && card.rank === matchRank))
+              matchRank != null &&
+              (card.rank === 'J' || card.rank === matchRank)
             }
             dealFromRef={dealFromRef}
             dealDelay={index * DEAL_STAGGER}

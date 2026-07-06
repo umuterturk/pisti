@@ -582,6 +582,8 @@ export default function App() {
           games={state.games}
           playerName={PLAYER_NAME}
           opponentName={opponentName}
+          playerCards={state.playerCollected}
+          opponentCards={state.opponentCollected}
           onNewGame={handleNextGame}
         />
       )}

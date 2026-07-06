@@ -477,35 +477,44 @@ body {
 }
 
 /* A card whose value matches the pile's top card (capture hint): the whole
-   edge glows and slowly pulses. */
+   edge glows and slowly pulses. The glow ring is a static box-shadow on a
+   separate ::after layer — only its opacity animates, so the browser can
+   composite the pulse on the GPU instead of repainting a box-shadow every
+   frame (which is what animating box-shadow directly would force, and adds
+   up fast with several matching cards animating forever on low-end phones). */
 .card--match {
   overflow: visible;
+  position: relative;
+}
+
+.card--match::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 200, 70, 1),
+    0 0 14px 3px rgba(255, 160, 20, 0.9),
+    0 0 30px 10px rgba(255, 90, 0, 0.55);
   animation: card-match-pulse 1.8s ease-in-out infinite;
+  will-change: opacity;
 }
 
 @keyframes card-match-pulse {
   0%,
   100% {
-    box-shadow:
-      inset 0 0 0 2px rgba(255, 184, 48, 0.7),
-      0 0 6px 1px rgba(255, 150, 20, 0.45),
-      0 0 12px 3px rgba(255, 90, 0, 0.25);
+    opacity: 0.55;
   }
   50% {
-    box-shadow:
-      inset 0 0 0 2px rgba(255, 200, 70, 1),
-      0 0 14px 3px rgba(255, 160, 20, 0.9),
-      0 0 30px 10px rgba(255, 90, 0, 0.55);
+    opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card--match {
+  .card--match::after {
     animation: none;
-    box-shadow:
-      inset 0 0 0 2px rgba(255, 190, 55, 0.9),
-      0 0 12px 3px rgba(255, 150, 20, 0.7),
-      0 0 24px 8px rgba(255, 90, 0, 0.45);
+    opacity: 1;
   }
 }
 
@@ -935,13 +944,6 @@ body {
   box-shadow: 0 0 22px rgba(255, 184, 48, 0.28);
 }
 
-.game-over__crown {
-  height: 1.3rem;
-  font-size: 1.15rem;
-  line-height: 1;
-  margin-bottom: 2px;
-}
-
 .game-over__name {
   font-size: 0.85rem;
   font-weight: 700;
@@ -972,6 +974,46 @@ body {
   justify-content: space-between;
   padding: 3px 0;
   opacity: 0.9;
+}
+
+.game-over__row {
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.game-over__badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.56rem;
+  font-weight: 900;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: #f5f0e6;
+}
+
+.game-over__row--two-clubs .game-over__badge {
+  background: #f5f0e6;
+  color: #1a1a2e;
+}
+
+.game-over__row--ten-diamonds .game-over__badge {
+  background: #f5f0e6;
+  color: #c0392b;
+}
+
+.game-over__row-label {
+  flex: 1;
+  text-align: left;
+}
+
+.game-over__row-value {
+  margin-left: auto;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .game-over__lines-sub {

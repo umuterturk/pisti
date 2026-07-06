@@ -9,9 +9,11 @@ interface HudProps {
   side: 'top' | 'bottom'
   /** Attached to the score value so flying score popups know where to land. */
   scoreRef?: RefObject<HTMLSpanElement | null>
+  /** Opens the scoring legend popup. */
+  onScoreClick?: () => void
 }
 
-export function Hud({ name, score, cards, active, side, scoreRef }: HudProps) {
+export function Hud({ name, score, cards, active, side, scoreRef, onScoreClick }: HudProps) {
   const initial = name.charAt(0).toUpperCase()
   return (
     <div className={`hud hud--${side} ${active ? 'hud--active' : ''}`}>
@@ -22,13 +24,18 @@ export function Hud({ name, score, cards, active, side, scoreRef }: HudProps) {
           {active && <span className="hud__turn-dot" />}
         </div>
       </div>
-      <div className="hud__badge">
+      <button
+        type="button"
+        className="hud__badge"
+        onClick={onScoreClick}
+        aria-label="Puanlamayı göster"
+      >
         <RollingScore value={score} className="hud__score" innerRef={scoreRef} />
         <span className="hud__cards">
           {cards}
           <span className="hud__cards-label">kart</span>
         </span>
-      </div>
+      </button>
     </div>
   )
 }

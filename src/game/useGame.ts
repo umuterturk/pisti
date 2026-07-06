@@ -196,8 +196,8 @@ function commit(prev: GameState, result: PlayResult): GameState {
   }
 }
 
-export function useGame() {
-  const [state, setState] = useState<GameState>(freshState)
+export function useGame(initialState?: GameState) {
+  const [state, setState] = useState<GameState>(() => initialState ?? freshState())
 
   // Mirror of the latest state so play functions can compute their result
   // synchronously, independent of when React runs the setState updater.
@@ -222,16 +222,6 @@ export function useGame() {
     const startingTurn: Turn =
       winner === 'player' || winner === 'opponent' ? winner : prev.turn
     apply(freshState(prev.games, prev.gameNumber + 1, startingTurn, prev.activeBotId))
-  }, [apply])
-
-  // Concede the current game: opponent takes the game, so they lead the next one.
-  const resign = useCallback(() => {
-    const prev = stateRef.current
-    const games: MatchScore = {
-      player: prev.games.player,
-      opponent: prev.games.opponent + 1,
-    }
-    apply(freshState(games, prev.gameNumber + 1, 'opponent', prev.activeBotId))
   }, [apply])
 
   // Switch opponents: starts a fresh match (0-0) against the chosen bot.
@@ -372,7 +362,6 @@ export function useGame() {
     canPlayerAct,
     newGame,
     nextGame,
-    resign,
     chooseBot,
     reorderPlayerHand,
     playPlayerCard,

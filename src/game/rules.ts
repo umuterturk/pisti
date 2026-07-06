@@ -2,6 +2,7 @@ import type { Card } from './cards'
 
 export const PISTI_BONUS = 10
 export const DOUBLE_PISTI_BONUS = 20
+export const MAJORITY_BONUS = 3
 
 export interface CaptureResult {
   captured: boolean
@@ -55,6 +56,55 @@ function sumCardPoints(cards: Card[]): number {
   return cards.reduce((total, card) => total + cardPoints(card), 0)
 }
 
+export type ScoreBreakdownKind = 'doublePisti' | 'pisti' | 'twoClubs' | 'tenDiamonds' | 'other'
+
+export interface ScoreBreakdownItem {
+  kind: ScoreBreakdownKind
+  label: string
+  points: number
+}
+
+/**
+ * Splits a side's current total into the line items that make it up (the two
+ * named point cards, everything else that scores, and any pişti bonuses) —
+ * the same figures `computeScoreboard` sums, just itemized for display.
+ */
+export function scoreBreakdown(
+  cards: Card[],
+  pistiCount: number,
+  doublePistiCount: number,
+): { items: ScoreBreakdownItem[]; total: number } {
+  const tenDiamonds = cards.find((c) => c.rank === '10' && c.suit === 'diamonds')
+  const twoClubs = cards.find((c) => c.rank === '2' && c.suit === 'clubs')
+  const otherPoints = cards.reduce((sum, card) => {
+    if (card === tenDiamonds || card === twoClubs) return sum
+    return sum + cardPoints(card)
+  }, 0)
+
+  const items: ScoreBreakdownItem[] = []
+  if (doublePistiCount > 0) {
+    items.push({
+      kind: 'doublePisti',
+      label: `Çift pişti ×${doublePistiCount}`,
+      points: doublePistiCount * DOUBLE_PISTI_BONUS,
+    })
+  }
+  if (pistiCount > 0) {
+    items.push({
+      kind: 'pisti',
+      label: pistiCount === 1 ? 'Pişti' : `Pişti ×${pistiCount}`,
+      points: pistiCount * PISTI_BONUS,
+    })
+  }
+  if (twoClubs) items.push({ kind: 'twoClubs', label: '2 (Kulüp)', points: cardPoints(twoClubs) })
+  if (tenDiamonds) {
+    items.push({ kind: 'tenDiamonds', label: '10 (Karo)', points: cardPoints(tenDiamonds) })
+  }
+  if (otherPoints > 0) items.push({ kind: 'other', label: 'Diğer toplananlar', points: otherPoints })
+
+  return { items, total: items.reduce((sum, item) => sum + item.points, 0) }
+}
+
 export function computeScoreboard(
   playerCards: Card[],
   opponentCards: Card[],
@@ -62,9 +112,14 @@ export function computeScoreboard(
   opponentPisti: number,
   playerDoublePisti = 0,
   opponentDoublePisti = 0,
+  // The majority bonus (most cards collected) is only decided once the hand is
+  // fully dealt out, so callers scoring a hand still in progress opt out of it.
+  includeMajority = true,
 ): Scoreboard {
-  const playerMajority = playerCards.length > opponentCards.length ? 3 : 0
-  const opponentMajority = opponentCards.length > playerCards.length ? 3 : 0
+  const playerMajority =
+    includeMajority && playerCards.length > opponentCards.length ? MAJORITY_BONUS : 0
+  const opponentMajority =
+    includeMajority && opponentCards.length > playerCards.length ? MAJORITY_BONUS : 0
 
   const player: SideScore = {
     cardCount: playerCards.length,

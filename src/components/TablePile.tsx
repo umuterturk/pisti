@@ -1,7 +1,7 @@
-import { forwardRef, useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { animate, motion, useMotionValue } from 'framer-motion'
 import type { Card as CardType } from '../game/cards'
-import { CARD_HEIGHT, CARD_WIDTH, LANDING } from '../motion/params'
+import { CARD_HEIGHT, CARD_WIDTH, LANDING, SPRING } from '../motion/params'
 import { Card } from './Card'
 
 function seededRandom(seed: string): number {
@@ -24,6 +24,20 @@ export function scatterFor(card: CardType) {
   }
 }
 
+// A double-click "peek": cards scatter much further apart than a normal landing
+// spot so ones buried under the pile become visible, then settle back on their
+// own after a moment.
+const PEEK_SPREAD = { offsetX: 92, offsetY: 72, rotation: 32 } as const
+const PEEK_DURATION_MS = 3000
+
+function randomPeekPlacement(): PileCardVisual {
+  return {
+    offsetX: (Math.random() * 2 - 1) * PEEK_SPREAD.offsetX,
+    offsetY: (Math.random() * 2 - 1) * PEEK_SPREAD.offsetY,
+    rotation: (Math.random() * 2 - 1) * PEEK_SPREAD.rotation,
+  }
+}
+
 export interface PileCardVisual {
   offsetX: number
   offsetY: number
@@ -40,6 +54,7 @@ const TOP_CARD_SCALE = 1.1
 function TableCard({
   card,
   placement,
+  peekPlacement,
   zIndex,
   dealIn,
   dealFromRef,
@@ -49,6 +64,7 @@ function TableCard({
 }: {
   card: CardType
   placement: PileCardVisual
+  peekPlacement?: PileCardVisual | null
   zIndex: number
   dealIn: boolean
   dealFromRef?: RefObject<HTMLDivElement | null>
@@ -110,6 +126,23 @@ function TableCard({
     })
   }, [emphasize, scale])
 
+  // A double-click "peek" nudges every card to a widely scattered spot so the
+  // player can glimpse ones buried underneath; releasing it settles the card
+  // back onto its normal landing spot.
+  const didMountPeek = useRef(false)
+  useEffect(() => {
+    if (!didMountPeek.current) {
+      didMountPeek.current = true
+      return
+    }
+    const target = peekPlacement ?? placement
+    animate(x, target.offsetX, SPRING.pile)
+    animate(y, target.offsetY, SPRING.pile)
+    animate(rotate, target.rotation, SPRING.pile)
+    // placement is stable for the card's lifetime; only peekPlacement toggles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peekPlacement])
+
   return (
     <motion.div
       ref={ref}
@@ -152,8 +185,34 @@ export const TablePile = forwardRef<HTMLDivElement, TablePileProps>(
     const shown = capturing ? [] : cards
     // Index among the freshly-dealt (no recorded visual) cards, for stagger.
     let dealIndex = 0
+
+    const [peekPlacements, setPeekPlacements] = useState<PileVisuals | null>(null)
+    const peekTimerRef = useRef<number | null>(null)
+
+    useEffect(() => {
+      return () => {
+        if (peekTimerRef.current !== null) window.clearTimeout(peekTimerRef.current)
+      }
+    }, [])
+
+    const handlePeek = () => {
+      if (shown.length < 2) return
+      const next: PileVisuals = {}
+      for (const card of shown) next[card.id] = randomPeekPlacement()
+      setPeekPlacements(next)
+      if (peekTimerRef.current !== null) window.clearTimeout(peekTimerRef.current)
+      peekTimerRef.current = window.setTimeout(() => {
+        peekTimerRef.current = null
+        setPeekPlacements(null)
+      }, PEEK_DURATION_MS)
+    }
+
     return (
-      <div className={`table-pile ${highlight ? 'table-pile--highlight' : ''}`} ref={ref}>
+      <div
+        className={`table-pile ${highlight ? 'table-pile--highlight' : ''}`}
+        ref={ref}
+        onDoubleClick={handlePeek}
+      >
         <div className="table-pile__stack">
           {!capturing && cards.length === 0 && showPlayPrompt && (
             <div className="table-pile__empty">Oyna</div>
@@ -173,6 +232,7 @@ export const TablePile = forwardRef<HTMLDivElement, TablePileProps>(
                 key={card.id}
                 card={card}
                 placement={placement}
+                peekPlacement={peekPlacements?.[card.id] ?? null}
                 zIndex={globalIndex + 1}
                 dealIn={dealIn}
                 dealFromRef={dealFromRef}

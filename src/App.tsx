@@ -14,13 +14,23 @@ import { Hud } from './components/Hud'
 import { OpponentArea } from './components/OpponentArea'
 import { OpponentPicker } from './components/OpponentPicker'
 import { PlayerHand } from './components/PlayerHand'
+import { ScoreInfoDialog } from './components/ScoreInfoDialog'
 import { StartScreen } from './components/StartScreen'
 import { TablePile, type PileVisuals } from './components/TablePile'
 import { ScorePopLayer, type ScorePop } from './components/ScorePopLayer'
 import { getBot } from './game/bots/registry'
 import { runTournament } from './game/bots/selfplay'
 import type { Card as CardType } from './game/cards'
-import { useGame, type PlayResult } from './game/useGame'
+import {
+  clearContinueParam,
+  clearGame,
+  hasContinueParam,
+  readContinuedGame,
+  saveGame,
+  setContinueParam,
+} from './game/gamePersistence'
+import { recordHandResult } from './game/lifetimeStats'
+import { useGame, type PlayResult, type Turn } from './game/useGame'
 import {
   cardPoints,
   computeScoreboard,
@@ -51,21 +61,25 @@ function capturePoints(result: PlayResult): number {
 }
 
 export default function App() {
+  // Only read on the very first render: if the URL says a match is in
+  // progress, resume it from storage instead of starting fresh.
+  const [continuedGame] = useState(readContinuedGame)
+
   const {
     state,
     canPlayerAct,
     nextGame,
-    resign,
     chooseBot,
     reorderPlayerHand,
     playPlayerCard,
     playOpponentCard,
     resolvePlay,
-  } = useGame()
+  } = useGame(continuedGame ?? undefined)
 
   const [resignOpen, setResignOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [started, setStarted] = useState(false)
+  const [scoreInfoSide, setScoreInfoSide] = useState<Turn | null>(null)
+  const [started, setStarted] = useState(() => continuedGame !== null)
   const opponentName = getBot(state.activeBotId).name
 
   const pileRef = useRef<HTMLDivElement>(null)
@@ -86,6 +100,9 @@ export default function App() {
   const shakeTimerRef = useRef<number | null>(null)
   const scorePopTimerRef = useRef<number | null>(null)
   const pistiTriggerCountRef = useRef(0)
+  // Seeded to the resumed hand's number (if any) so a hand that was already
+  // finished and recorded before a refresh doesn't get counted a second time.
+  const recordedHandRef = useRef(continuedGame?.gameNumber ?? 0)
 
   // Whenever a fresh hand is dealt, pause play until the deal-in animation ends.
   useEffect(() => {
@@ -93,6 +110,32 @@ export default function App() {
     const timer = window.setTimeout(() => setDealing(false), DEAL_ANIM_MS)
     return () => window.clearTimeout(timer)
   }, [state.dealSerial])
+
+  // Persist the outcome of each finished hand once, keyed by gameNumber so
+  // re-renders don't double-count.
+  useEffect(() => {
+    if (!state.gameOver || !state.scoreboard) return
+    if (recordedHandRef.current === state.gameNumber) return
+    recordedHandRef.current = state.gameNumber
+    recordHandResult(state.scoreboard.winner === 'player')
+  }, [state.gameOver, state.scoreboard, state.gameNumber])
+
+  // Keep the in-progress match in storage so a page refresh can resume it;
+  // the URL's continue param is what tells the next load to read it back.
+  // Only persist at clean turn boundaries (not mid-flight) so a refresh can
+  // never resume with a card stuck in limbo between hand and pile.
+  useEffect(() => {
+    if (!started || state.phase !== 'idle') return
+    saveGame(state)
+  }, [started, state])
+
+  // If the URL claims a match should resume but nothing was actually in
+  // storage (cleared cache, different browser), drop the stale param.
+  useEffect(() => {
+    if (continuedGame === null && hasContinueParam()) clearContinueParam()
+    // Only relevant once, right after mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const getPileTarget = useCallback(() => {
     const pileEl = pileRef.current?.querySelector('.table-pile__stack')
@@ -331,8 +374,10 @@ export default function App() {
   const handleResignConfirm = useCallback(() => {
     setResignOpen(false)
     resetTransient()
-    resign()
-  }, [resetTransient, resign])
+    setStarted(false)
+    clearGame()
+    clearContinueParam()
+  }, [resetTransient])
 
   const handleSelectBot = useCallback(
     (botId: string) => {
@@ -348,6 +393,7 @@ export default function App() {
       resetTransient()
       chooseBot(botId)
       setStarted(true)
+      setContinueParam()
     },
     [resetTransient, chooseBot],
   )
@@ -402,6 +448,9 @@ export default function App() {
     state.opponentCollected,
     state.playerPisti,
     state.opponentPisti,
+    state.playerDoublePisti,
+    state.opponentDoublePisti,
+    false,
   )
 
   // Capture hint: while the player can act, highlight the rank of any hand card
@@ -435,6 +484,7 @@ export default function App() {
           cards={state.opponentCollected.length}
           active={state.turn === 'opponent'}
           scoreRef={opponentScoreRef}
+          onScoreClick={() => setScoreInfoSide('opponent')}
         />
         <OpponentArea handCount={state.opponentHand.length} dealFromRef={sideHudRef} />
       </div>
@@ -468,6 +518,7 @@ export default function App() {
           cards={state.playerCollected.length}
           active={state.turn === 'player'}
           scoreRef={playerScoreRef}
+          onScoreClick={() => setScoreInfoSide('player')}
         />
       </div>
 
@@ -489,7 +540,7 @@ export default function App() {
         <button
           className="side-hud__btn"
           onClick={() => setResignOpen(true)}
-          aria-label="Oyunu bırak"
+          aria-label="Oyundan çık"
         >
           Çekil
         </button>
@@ -547,12 +598,22 @@ export default function App() {
       />
       <ConfirmDialog
         open={resignOpen}
-        title="Oyunu bırak"
-        message="Bu eli rakibe bırakıp yeni el başlatılsın mı?"
+        title="Oyundan çık"
+        message="Ana menüye dönülsün mü? Bu maçtaki skor sıfırlanır."
         confirmLabel="Çekil"
         cancelLabel="Vazgeç"
         onConfirm={handleResignConfirm}
         onCancel={() => setResignOpen(false)}
+      />
+      <ScoreInfoDialog
+        open={scoreInfoSide !== null}
+        name={scoreInfoSide === 'opponent' ? opponentName : PLAYER_NAME}
+        cards={scoreInfoSide === 'opponent' ? state.opponentCollected : state.playerCollected}
+        pistiCount={scoreInfoSide === 'opponent' ? state.opponentPisti : state.playerPisti}
+        doublePistiCount={
+          scoreInfoSide === 'opponent' ? state.opponentDoublePisti : state.playerDoublePisti
+        }
+        onClose={() => setScoreInfoSide(null)}
       />
     </div>
   )

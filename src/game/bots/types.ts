@@ -25,5 +25,7 @@ export interface BotProfile {
   /** Display name shown to the human (persona flavor for aliases). */
   name: string
   difficulty: string
+  /** A one-line, slightly tongue-in-cheek description of how this bot plays. */
+  blurb: string
   strategy: BotStrategy
 }

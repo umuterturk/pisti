@@ -22,7 +22,7 @@ const lineVariants = {
 }
 
 // Counts up from 0 to `value` with an ease-out curve for a game-like tally.
-function CountUp({ value, duration = 1 }: { value: number; duration?: number }) {
+export function CountUp({ value, duration = 1 }: { value: number; duration?: number }) {
   const [display, setDisplay] = useState(0)
   useEffect(() => {
     let raf = 0

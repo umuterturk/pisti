@@ -486,6 +486,16 @@ export default function App() {
     matchRank != null && state.playerHand.some((c) => c.rank === matchRank)
   const highlightPileTop = playerHasMatch || playerHasJack
 
+  // While it's the opponent's turn but its card hasn't launched yet (the ~650ms
+  // pre-play pause), show a "Düşünüyor…" hint. Once the card flies, phase flips
+  // to 'animating' and the hint clears on its own.
+  const opponentThinking =
+    state.turn === 'opponent' &&
+    state.phase === 'idle' &&
+    !state.gameOver &&
+    !capture &&
+    !dealing
+
   return (
     <div
       className={`game-shell${
@@ -506,6 +516,7 @@ export default function App() {
           score={liveScore.opponent.total}
           cards={state.opponentCollected.length}
           active={state.turn === 'opponent'}
+          thinking={opponentThinking}
           scoreRef={opponentScoreRef}
           onScoreClick={() => setScoreInfoSide('opponent')}
         />

@@ -402,6 +402,7 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
           moveSeq: 0,
           turnDeadline: Date.now() + TURN_TIMEOUT_MS,
           rematchReady: {},
+          reactions: [],
           firstSeat: newFirstSeat,
           endedReason: null,
           winnerUid: null,

@@ -30,6 +30,7 @@ import type {
   GameRequest,
   GameRequestStatus,
   PlayerEntry,
+  RivalryStats,
   UserLifetimeStats,
 } from '../ports'
 
@@ -220,6 +221,23 @@ export class FirebaseFriendsAdapter implements FriendsPort {
       return {
         handsWon: data.handsWon ?? 0,
         handsPlayed: data.handsPlayed ?? 0,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  async getRivalry(opponentUid: string): Promise<RivalryStats | null> {
+    const uid = await this.getUid()
+    if (uid === opponentUid) return null
+    try {
+      const snap = await getDoc(this.rivalRef(uid, opponentUid))
+      if (!snap.exists()) return null
+      const rival = snap.data() as FriendRivalDoc
+      return {
+        wins: rival.wins[uid] ?? 0,
+        losses: rival.wins[opponentUid] ?? 0,
+        ties: rival.ties ?? 0,
       }
     } catch {
       return null

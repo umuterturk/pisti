@@ -43,7 +43,7 @@ import {
   setContinueParam,
 } from './game/gamePersistence'
 import { getLifetimeStats, recordHandResult } from './game/lifetimeStats'
-import type { FriendEntry, GameRequest, UserLifetimeStats } from './ports'
+import type { FriendEntry, GameRequest, RivalryStats } from './ports'
 import { useGame, hydrateGameState, blankMpWaitingState, type PlayResult, type Turn, type GameState } from './game/useGame'
 import {
   cardPoints,
@@ -326,8 +326,7 @@ export default function App() {
   const [inviteCopied, setInviteCopied] = useState(false)
   const [showCountdown, setShowCountdown] = useState(false)
   const [debugMpEnd, setDebugMpEnd] = useState<ReturnType<typeof makeDebugMpEnd> | null>(null)
-  const [lifetime, setLifetime] = useState<UserLifetimeStats>(() => getLifetimeStats())
-  const [opponentLifetime, setOpponentLifetime] = useState<UserLifetimeStats | null>(null)
+  const [rivalry, setRivalry] = useState<RivalryStats | null>(null)
 
   // ── Emoji handler (MP mode only) ──────────────────────────────────────────
   const handleEmojiClick = useCallback(async (emoji: string) => {
@@ -355,10 +354,10 @@ export default function App() {
       e.preventDefault()
       setDebugMpEnd((prev) => (prev ? null : makeDebugMpEnd()))
       if (!debugMpEnd) {
-        setLifetime(getLifetimeStats())
-        setOpponentLifetime({
-          handsWon: 5 + Math.floor(Math.random() * 40),
-          handsPlayed: 20 + Math.floor(Math.random() * 80),
+        setRivalry({
+          wins: Math.floor(Math.random() * 10),
+          losses: Math.floor(Math.random() * 10),
+          ties: Math.floor(Math.random() * 4),
         })
       }
     }
@@ -366,18 +365,26 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [debugMpEnd])
 
-  // Refresh lifetime + fetch opponent stats when the end screen opens
+  // Fetch head-to-head rivalry when the end screen opens. Refetch shortly after:
+  // recordMatchResult commits this hand's result concurrently, so the second
+  // read picks up the fresh numbers.
   useEffect(() => {
     const showEnd = (isMpMode && mpState.phase === 'ended') || !!debugMpEnd
     if (!showEnd) return
-    setLifetime(getLifetimeStats())
     const oppUid = debugMpEnd ? null : mpState.opponentUid
     if (!oppUid) return
     let cancelled = false
-    void friendsAdapter.getUserStats(oppUid).then((stats) => {
-      if (!cancelled) setOpponentLifetime(stats)
-    })
-    return () => { cancelled = true }
+    const fetchRivalry = () => {
+      void friendsAdapter.getRivalry(oppUid).then((stats) => {
+        if (!cancelled) setRivalry(stats)
+      })
+    }
+    fetchRivalry()
+    const t = window.setTimeout(fetchRivalry, 1500)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
   }, [isMpMode, mpState.phase, mpState.opponentUid, debugMpEnd])
 
   // Always use live state from useGame — never a stale snapshot
@@ -693,10 +700,37 @@ export default function App() {
     state.games,
   ])
 
+  // ── MP: end-sync fallback ─────────────────────────────────────────────────
+  // If the doc says 'ended' but seed+moves can't reproduce a finished hand
+  // (corrupted/poisoned doc), don't strand the user on a frozen board: after a
+  // grace period show the end screen with the board as-is (no game win awarded).
+  useEffect(() => {
+    if (!isMpMode || mpState.phase !== 'ended' || mpEndSynced) return
+    const t = window.setTimeout(() => {
+      log('End-sync fallback — ended doc without finishable move log')
+      resetTransient()
+      if (!state.gameOver) resetToState({ ...state, gameOver: true, scoreboard: null })
+      setMpEndSynced(true)
+    }, 5000)
+    return () => window.clearTimeout(t)
+  }, [isMpMode, mpState.phase, mpEndSynced, state, resetTransient, resetToState])
+
+  // ── MP: once the doc is 'ended', someone already wrote it — never write again ─
+  // Without this, the client that received the final card remotely (phase flips
+  // to 'ended' before its local gameOver lands) keeps this ref false and can
+  // write a spurious status:'ended' onto the NEXT (rematched) hand.
+  useEffect(() => {
+    if (mpState.phase === 'ended') mpGameOverWrittenRef.current = true
+  }, [mpState.phase])
+
   // ── MP: write status:ended to Firestore when local game finishes ──────────
   useEffect(() => {
     if (!isMpMode || mpState.phase !== 'playing') return
     if (!state.gameOver) { mpGameOverWrittenRef.current = false; return }
+    // The finished board must belong to the CURRENT round. During rematch there is
+    // a one-render window where phase is already 'playing' but `state` is still the
+    // previous hand's finished board (hydration setState not yet rendered).
+    if (state.gameNumber !== mpState.round) return
     if (mpGameOverWrittenRef.current || !mpState.matchId || leavingRef.current) return
     mpGameOverWrittenRef.current = true
     const matchId = mpState.matchId
@@ -711,19 +745,24 @@ export default function App() {
           const ref = doc(getFirebaseDb(), MATCHES_COLLECTION, matchId)
           const snap = await tx.get(ref)
           if (!snap.exists()) return
-          const data = snap.data() as { status?: string }
+          const data = snap.data() as { status?: string; moves?: string[] }
           // Don't clobber resign / heartbeat forfeits with "completed"
           if (data.status === 'ended') return
+          // A hand can only complete while 'playing' with moves on record. A freshly
+          // rematched doc is 'ready' with moves: [] — never write 'ended' onto it.
+          if (data.status !== 'playing') return
+          if ((data.moves?.length ?? 0) === 0) return
           const winner = state.scoreboard?.winner
           const winnerSeat: 0 | 1 | null =
             winner === 'player' ? mpState.localSeat :
             winner === 'opponent' ? ((1 - (mpState.localSeat ?? 0)) as 0 | 1) :
             null
+          log('writing status:ended', { matchId, winnerSeat })
           tx.update(ref, { status: 'ended', endedReason: 'completed', winnerSeat })
         })
       } catch { /* best effort */ }
     })()
-  }, [isMpMode, mpState.phase, mpState.matchId, state.gameOver])
+  }, [isMpMode, mpState.phase, mpState.matchId, mpState.round, state.gameOver, state.gameNumber])
 
   // ── MP: heartbeat forfeit watch ───────────────────────────────────────────
   useEffect(() => {
@@ -1205,9 +1244,30 @@ export default function App() {
     }
   }, [username, saveUsername])
 
+  /** Detach from any previous match and reset all per-match bookkeeping.
+   *  Must run before creating/joining a room: stale refs or a stale finished
+   *  board from the previous match otherwise poison the new one (spurious
+   *  'ended' write, carried-over scores, wrong move cursor). */
+  const beginNewMatch = useCallback(async () => {
+    if (mpStateRef.current.matchId) {
+      try { await leave() } catch { /* best effort */ }
+    }
+    leavingRef.current = false
+    prevSeedRef.current = null
+    appliedMovesRef.current = 0
+    mpGameOverWrittenRef.current = false
+    autoPlayedDeadlineRef.current = 0
+    publishChainRef.current = Promise.resolve()
+    recordedHandRef.current = 0
+    setMpEndSynced(false)
+    setRivalry(null)
+    resetTransient()
+    resetToState(blankMpWaitingState())
+  }, [leave, resetTransient, resetToState])
+
   const handlePlayWithFriend = useCallback(async () => {
     await ensureMpUsername()
-    leavingRef.current = false
+    await beginNewMatch()
     setInvitingUid(null)
     setChallengedName(null)
     outgoingRequestIdRef.current = null
@@ -1225,14 +1285,14 @@ export default function App() {
     const shareResult = await shareInviteLink(code)
     setInviteCopied(shareResult === 'copied')
     setMpOverlayPhase('waiting')
-  }, [ensureMpUsername, createRoom])
+  }, [ensureMpUsername, beginNewMatch, createRoom])
 
   const handleInviteFriend = useCallback(
     async (friend: FriendEntry) => {
       setInvitingUid(friend.uid)
       try {
         await ensureMpUsername()
-        leavingRef.current = false
+        await beginNewMatch()
         setInviteCopied(false)
         clearGame()
         clearContinueParam()
@@ -1280,7 +1340,7 @@ export default function App() {
         setInvitingUid(null)
       }
     },
-    [ensureMpUsername, createRoom, sendChallenge, leave],
+    [ensureMpUsername, beginNewMatch, createRoom, sendChallenge, leave],
   )
 
   const handleCancelMpOverlay = useCallback(async () => {
@@ -1301,7 +1361,7 @@ export default function App() {
 
   const handleAcceptGameRequest = useCallback(
     async (request: GameRequest) => {
-      leavingRef.current = false
+      await beginNewMatch()
       setChallengedName(null)
       setInviteCopied(false)
       try {
@@ -1316,7 +1376,7 @@ export default function App() {
         setMpHydrated(true)
       }
     },
-    [acceptRequest, joinRoom],
+    [beginNewMatch, acceptRequest, joinRoom],
   )
 
   const handleDeclineGameRequest = useCallback(
@@ -1557,8 +1617,7 @@ export default function App() {
           mpState={debugMpEnd?.mpState ?? mpState}
           playerName={playerName}
           opponentName={debugMpEnd ? (debugMpEnd.mpState.opponentName ?? 'Rakip') : opponentName}
-          lifetime={lifetime}
-          opponentLifetime={opponentLifetime}
+          rivalry={rivalry}
           onRematch={debugMpEnd ? () => setDebugMpEnd(makeDebugMpEnd()) : handleMpRematch}
           onLeave={debugMpEnd ? () => setDebugMpEnd(null) : handleMpLeave}
         />

@@ -105,7 +105,7 @@ describe('MP optimistic publish desync (repro)', () => {
 describe('publishMoveWithRetry', () => {
   it('classifies Firestore contention as retryable', () => {
     expect(isRetryablePublishError({ code: 'failed-precondition', message: 'x' })).toBe(true)
-    expect(isRetryablePublishError(new Error('Stale move; retry.'))).toBe(true)
+    expect(isRetryablePublishError(new Error('Stale move; retry.'))).toBe(false)
     expect(isRetryablePublishError(new Error('Match ended.'))).toBe(false)
     expect(isRetryablePublishError(new Error('Match not found.'))).toBe(false)
   })
@@ -131,6 +131,22 @@ describe('publishMoveWithRetry', () => {
 
     expect(outcome).toBe('ok' satisfies PublishOutcome)
     expect(attempts).toBe(3)
+  })
+
+  it('fails immediately on stale moveSeq (no doomed same-seq retries)', async () => {
+    const playMove = vi.fn(async () => {
+      throw new Error('Stale move; retry.')
+    })
+
+    const outcome = await publishMoveWithRetry(playMove, {
+      cardId: 'A-spades',
+      moveSeq: 0,
+      nextDeadline: Date.now() + 15_000,
+      sleep: async () => {},
+    })
+
+    expect(outcome).toBe('failed')
+    expect(playMove).toHaveBeenCalledTimes(1)
   })
 
   it('returns match_ended without treating it as a rollbackable failure', async () => {

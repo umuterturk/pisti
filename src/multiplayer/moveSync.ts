@@ -33,11 +33,14 @@ export function isMatchEndedError(err: unknown): boolean {
   return errorMessage(err) === 'Match ended.'
 }
 
-/** Stale moveSeq / transaction contention / brief network blips — safe to retry. */
+/** Transaction contention / brief network blips — safe to retry. */
 export function isRetryablePublishError(err: unknown): boolean {
   if (isMatchEndedError(err)) return false
   const msg = errorMessage(err)
-  if (msg.includes('Stale move')) return true
+  // A stale moveSeq was observed on FRESH data inside runTransaction (the SDK
+  // already re-reads on contention) — retrying with the same seq can never
+  // succeed. Fail fast so the caller rolls back to authority immediately.
+  if (msg.includes('Stale move')) return false
   const code = errorCode(err)
   if (code && RETRYABLE_CODES.has(code)) return true
   // Firebase sometimes surfaces the code only inside the message.

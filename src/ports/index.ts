@@ -53,6 +53,13 @@ export interface UserLifetimeStats {
   handsPlayed: number
 }
 
+/** Head-to-head record against one opponent, from the local player's view. */
+export interface RivalryStats {
+  wins: number
+  losses: number
+  ties: number
+}
+
 export interface FriendsPort {
   syncProfile(displayName: string): Promise<void>
   /** Persist local lifetime tallies onto the Firebase user profile. */
@@ -61,6 +68,8 @@ export interface FriendsPort {
   setPresence(inMatch: boolean, matchId?: string): Promise<void>
   /** Read another player's published lifetime tallies (or null if missing). */
   getUserStats(uid: string): Promise<UserLifetimeStats | null>
+  /** Read the head-to-head record against an opponent (or null if none yet). */
+  getRivalry(opponentUid: string): Promise<RivalryStats | null>
   addFriend(uid: string, name: string): Promise<void>
   removeFriend(uid: string): Promise<void>
   isFriend(uid: string): Promise<boolean>

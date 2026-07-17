@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { CountUp } from '../components/GameOver'
 import { scoreBreakdown } from '../game/rules'
 import type { GameState } from '../game/useGame'
-import type { UserLifetimeStats } from '../ports'
+import type { RivalryStats } from '../ports'
 import type { MultiplayerState } from './useMultiplayer'
 
 interface Props {
@@ -12,10 +12,8 @@ interface Props {
   mpState: MultiplayerState
   playerName: string
   opponentName: string
-  /** Local player's all-time record. */
-  lifetime: UserLifetimeStats
-  /** Opponent's published all-time record (null while loading / unavailable). */
-  opponentLifetime: UserLifetimeStats | null
+  /** Head-to-head record between these two players (null while loading / none yet). */
+  rivalry: RivalryStats | null
   onRematch: () => void
   onLeave: () => void
 }
@@ -119,19 +117,13 @@ function RoundColumn({
   )
 }
 
-function formatLifetime(stats: UserLifetimeStats | null): string {
-  if (!stats) return '—'
-  return `${stats.handsWon}G / ${stats.handsPlayed}`
-}
-
 export function MultiplayerEndOverlay({
   open,
   gameState,
   mpState,
   playerName,
   opponentName,
-  lifetime,
-  opponentLifetime,
+  rivalry,
   onRematch,
   onLeave,
 }: Props) {
@@ -271,13 +263,18 @@ export function MultiplayerEndOverlay({
             >
               <div className="mp-end__life">
                 <span>
-                  {playerName} <strong>{formatLifetime(lifetime)}</strong>
+                  {playerName} <strong>{rivalry?.wins ?? '—'}</strong>
                 </span>
                 <span className="mp-end__life-sep">·</span>
                 <span>
-                  {opponentName} <strong>{formatLifetime(opponentLifetime)}</strong>
+                  Berabere <strong>{rivalry?.ties ?? '—'}</strong>
+                </span>
+                <span className="mp-end__life-sep">·</span>
+                <span>
+                  {opponentName} <strong>{rivalry?.losses ?? '—'}</strong>
                 </span>
               </div>
+              <p className="mp-end__room-hint">Aranızdaki skor</p>
             </motion.section>
 
             <motion.div

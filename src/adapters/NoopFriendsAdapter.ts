@@ -3,6 +3,7 @@ import type {
   FriendsPort,
   GameRequest,
   PlayerEntry,
+  RivalryStats,
   UserLifetimeStats,
 } from '../ports'
 
@@ -11,6 +12,9 @@ export class NoopFriendsAdapter implements FriendsPort {
   async syncLifetimeStats(_stats: UserLifetimeStats): Promise<void> {}
   async setPresence(_inMatch: boolean, _matchId?: string): Promise<void> {}
   async getUserStats(_uid: string): Promise<UserLifetimeStats | null> {
+    return null
+  }
+  async getRivalry(_opponentUid: string): Promise<RivalryStats | null> {
     return null
   }
   async addFriend(_uid: string, _name: string): Promise<void> {}

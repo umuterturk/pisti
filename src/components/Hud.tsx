@@ -2,7 +2,7 @@ import { memo, useState, useEffect, type RefObject } from 'react'
 import { HudTimerRing, useTurnTimer } from '../app/TurnTimer'
 import { RollingScore } from './RollingScore'
 
-const EMOJIS = ['🙄', '😂', '😮']
+const EMOJIS = ['🙄', '😂', '😮', '🤓', '😒']
 const EMOJI_COOLDOWN_MS = 10000 // 10 seconds
 
 interface HudProps {

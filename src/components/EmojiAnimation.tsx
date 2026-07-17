@@ -41,9 +41,10 @@ export function EmojiAnimation({ reactions, localUid }: EmojiAnimationProps) {
 
       setAnimating((prev) => [...prev, emoji])
 
+      // Must match the emoji-burst CSS animation duration (2s incl. fade-out)
       setTimeout(() => {
         setAnimating((prev) => prev.filter((e) => e.id !== id))
-      }, 1500)
+      }, 2000)
     })
   }, [reactions, localUid, processedIds])
 

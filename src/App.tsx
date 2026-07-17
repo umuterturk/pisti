@@ -240,13 +240,7 @@ export default function App() {
   const isMpMode = mpState.phase !== 'idle'
 
   // Stay "in match" through lobby + end screen; clear only when fully idle
-  const presenceInMatch =
-    isMpMode &&
-    (mpState.phase === 'creating' ||
-      mpState.phase === 'waiting' ||
-      mpState.phase === 'countdown' ||
-      mpState.phase === 'playing' ||
-      mpState.phase === 'ended')
+  const presenceInMatch = isMpMode && mpState.phase === 'playing'
 
   useUserPresence(
     friendsAdapter,

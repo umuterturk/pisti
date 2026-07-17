@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { getLifetimeStats } from '../game/lifetimeStats'
+import type { RefreshFriendsOpts } from '../app/useFriends'
 import type { FriendEntry, PlayerEntry } from '../ports'
 import { Card } from './Card'
 import { FriendsPage } from './FriendsPage'
 import { NewGameDialog } from './NewGameDialog'
+
+const FRIENDS_TAB_STALE_MS = 60_000
 
 interface StartScreenProps {
   open: boolean
@@ -20,7 +23,7 @@ interface StartScreenProps {
   onRemoveFriend: (uid: string) => void
   onAddFriend: (player: PlayerEntry) => Promise<void>
   onEditName: () => void
-  onRefreshFriends: (opts?: { silent?: boolean }) => void
+  onRefreshFriends: (opts?: RefreshFriendsOpts) => void | Promise<void>
 }
 
 type HomePage = 'home' | 'friends'
@@ -76,7 +79,7 @@ export function StartScreen({
 
   useEffect(() => {
     if (!open || activePage !== 'friends') return
-    onRefreshFriends({ silent: true })
+    void onRefreshFriends({ silent: true, maxAgeMs: FRIENDS_TAB_STALE_MS })
   }, [open, activePage, onRefreshFriends])
 
   const winRate =
@@ -191,6 +194,7 @@ export function StartScreen({
                 onRemoveFriend={onRemoveFriend}
                 onAddFriend={onAddFriend}
                 onPlayWithFriend={onPlayWithFriend}
+                onRefresh={() => onRefreshFriends({ silent: true })}
               />
             )}
           </div>

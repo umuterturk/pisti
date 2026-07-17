@@ -1,36 +1,68 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FriendEntry, FriendsPort, GameRequest, PlayerEntry } from '../ports'
+
+export interface RefreshFriendsOpts {
+  silent?: boolean
+  /** Skip fetch if a successful refresh completed within this many ms. */
+  maxAgeMs?: number
+}
 
 export function useFriends(friends: FriendsPort, enabled: boolean) {
   const [friendList, setFriendList] = useState<FriendEntry[]>([])
   const [otherPlayers, setOtherPlayers] = useState<PlayerEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [incomingRequest, setIncomingRequest] = useState<GameRequest | null>(null)
+  const lastFetchedAtRef = useRef(0)
+  const inFlightRef = useRef<Promise<void> | null>(null)
 
-  const refresh = useCallback(async (opts?: { silent?: boolean }) => {
+  const refresh = useCallback(async (opts?: RefreshFriendsOpts) => {
     if (!enabled) {
       setFriendList([])
       setOtherPlayers([])
       setLoading(false)
       return
     }
+
+    const maxAgeMs = opts?.maxAgeMs
+    if (
+      typeof maxAgeMs === 'number' &&
+      maxAgeMs > 0 &&
+      lastFetchedAtRef.current > 0 &&
+      Date.now() - lastFetchedAtRef.current < maxAgeMs
+    ) {
+      return
+    }
+
+    if (inFlightRef.current) {
+      await inFlightRef.current
+      return
+    }
+
     const silent = opts?.silent === true
     if (!silent) setLoading(true)
-    try {
-      const [friendList, playerList] = await Promise.all([
-        friends.listFriends(),
-        friends.listOtherPlayers(),
-      ])
-      setFriendList(friendList)
-      setOtherPlayers(playerList)
-    } catch {
-      if (!silent) {
-        setFriendList([])
-        setOtherPlayers([])
+
+    const run = (async () => {
+      try {
+        const [nextFriends, playerList] = await Promise.all([
+          friends.listFriends(),
+          friends.listOtherPlayers(),
+        ])
+        setFriendList(nextFriends)
+        setOtherPlayers(playerList)
+        lastFetchedAtRef.current = Date.now()
+      } catch {
+        if (!silent) {
+          setFriendList([])
+          setOtherPlayers([])
+        }
+      } finally {
+        if (!silent) setLoading(false)
+        inFlightRef.current = null
       }
-    } finally {
-      if (!silent) setLoading(false)
-    }
+    })()
+
+    inFlightRef.current = run
+    await run
   }, [friends, enabled])
 
   useEffect(() => {

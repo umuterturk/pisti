@@ -36,6 +36,17 @@ import type {
 /** Consider online if lastSeen within this window (heartbeat is 30s). */
 const ONLINE_MS = 90_000
 
+function isLocalhostClient(): boolean {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]'
+}
+
+function effectiveInMatch(profile: UserDoc, online: boolean): boolean {
+  // inMatch can stick after a tab-kill; only trust it while the client is still heartbeating.
+  return profile.inMatch === true && online
+}
+
 interface UserDoc {
   displayName?: string
   handsWon?: number
@@ -44,6 +55,8 @@ interface UserDoc {
   lastSeenAt?: TimestampType | number | null
   inMatch?: boolean
   currentMatchId?: string | null
+  /** Set when the account has played from localhost; sticky once true. */
+  isTest?: boolean
 }
 
 interface FriendDoc {
@@ -102,12 +115,31 @@ export class FirebaseFriendsAdapter implements FriendsPort {
   private localUid: string | null = null
   private displayName = ''
   private requestUnsubscribe: (() => void) | null = null
+  /** Cached: whether the local account is a test player (localhost or sticky flag). */
+  private localIsTest: boolean | null = null
 
   private async getUid(): Promise<string> {
     if (!this.localUid) {
       this.localUid = await ensureAnonymousAuth()
     }
     return this.localUid
+  }
+
+  /** Real players must not see test accounts; test players see everyone. */
+  private async amITest(): Promise<boolean> {
+    if (isLocalhostClient()) {
+      this.localIsTest = true
+      return true
+    }
+    if (this.localIsTest != null) return this.localIsTest
+    try {
+      const uid = await this.getUid()
+      const snap = await getDoc(this.userRef(uid))
+      this.localIsTest = snap.exists() && (snap.data() as UserDoc).isTest === true
+    } catch {
+      this.localIsTest = false
+    }
+    return this.localIsTest
   }
 
   private userRef(uid: string) {
@@ -140,16 +172,18 @@ export class FirebaseFriendsAdapter implements FriendsPort {
   async syncProfile(displayName: string): Promise<void> {
     const uid = await this.getUid()
     this.displayName = displayName.trim()
-    await setDoc(
-      this.userRef(uid),
-      {
-        displayName: this.displayName || `Oyuncu ${uid.slice(-4).toUpperCase()}`,
-        updatedAt: serverTimestamp(),
-        lastSeenAt: serverTimestamp(),
-        // Do not touch inMatch here — useUserPresence owns that field
-      },
-      { merge: true },
-    )
+    const patch: Record<string, unknown> = {
+      displayName: this.displayName || `Oyuncu ${uid.slice(-4).toUpperCase()}`,
+      updatedAt: serverTimestamp(),
+      lastSeenAt: serverTimestamp(),
+      // Do not touch inMatch here — useUserPresence owns that field
+    }
+    // Sticky: once you've played from localhost you're marked test forever.
+    if (isLocalhostClient()) {
+      patch.isTest = true
+      this.localIsTest = true
+    }
+    await setDoc(this.userRef(uid), patch, { merge: true })
   }
 
   async setPresence(inMatch: boolean, matchId?: string): Promise<void> {
@@ -226,65 +260,73 @@ export class FirebaseFriendsAdapter implements FriendsPort {
 
   async listFriends(): Promise<FriendEntry[]> {
     const myUid = await this.getUid()
+    const hideTest = !(await this.amITest())
     const snap = await getDocs(collection(getFirebaseDb(), USERS_COLLECTION, myUid, 'friends'))
     const now = Date.now()
 
-    const entries = await Promise.all(
-      snap.docs.map(async (d) => {
-        const friendUid = d.id
-        const data = d.data() as FriendDoc
+    const entries = (
+      await Promise.all(
+        snap.docs.map(async (d): Promise<FriendEntry | null> => {
+          const friendUid = d.id
+          const data = d.data() as FriendDoc
 
-        let name = data.name?.trim() || `Oyuncu ${friendUid.slice(-4).toUpperCase()}`
-        let online = false
-        let inMatch = false
-        let wins = 0
-        let losses = 0
-        let ties = 0
+          let name = data.name?.trim() || `Oyuncu ${friendUid.slice(-4).toUpperCase()}`
+          let online = false
+          let inMatch = false
+          let isTest = false
+          let wins = 0
+          let losses = 0
+          let ties = 0
 
-        // Profile + rival reads are best-effort — don't blank the whole list on one denial
-        try {
-          const profileSnap = await getDoc(this.userRef(friendUid))
-          if (profileSnap.exists()) {
-            const profile = profileSnap.data() as UserDoc
-            const profileName = profile.displayName?.trim()
-            if (profileName) name = profileName
-            const lastSeen = timestampToMs(profile.lastSeenAt)
-            online = lastSeen != null && now - lastSeen < ONLINE_MS
-            inMatch = profile.inMatch === true
+          // Profile + rival reads are best-effort — don't blank the whole list on one denial
+          try {
+            const profileSnap = await getDoc(this.userRef(friendUid))
+            if (profileSnap.exists()) {
+              const profile = profileSnap.data() as UserDoc
+              const profileName = profile.displayName?.trim()
+              if (profileName) name = profileName
+              const lastSeen = timestampToMs(profile.lastSeenAt)
+              online = lastSeen != null && now - lastSeen < ONLINE_MS
+              inMatch = effectiveInMatch(profile, online)
+              isTest = profile.isTest === true
+            }
+          } catch {
+            // Keep cached friend name / offline defaults
           }
-        } catch {
-          // Keep cached friend name / offline defaults
-        }
 
-        if (name !== data.name) {
-          void setDoc(this.friendRef(myUid, friendUid), { name }, { merge: true })
-        }
+          if (hideTest && isTest) return null
 
-        try {
-          const rivalSnap = await getDoc(this.rivalRef(myUid, friendUid))
-          if (rivalSnap.exists()) {
-            const rival = rivalSnap.data() as FriendRivalDoc
-            wins = rival.wins[myUid] ?? 0
-            losses = rival.wins[friendUid] ?? 0
-            ties = rival.ties ?? 0
+          if (name !== data.name) {
+            void setDoc(this.friendRef(myUid, friendUid), { name }, { merge: true })
           }
-        } catch {
-          // Rivals collection may be unavailable until rules are deployed
-        }
 
-        return {
-          uid: friendUid,
-          name,
-          addedAt: data.addedAt ?? 0,
-          wins,
-          losses,
-          ties,
-          online,
-          inMatch,
-          lastPlayedAt: timestampToMs(data.lastPlayedAt),
-        } satisfies FriendEntry
-      }),
-    )
+          try {
+            const rivalSnap = await getDoc(this.rivalRef(myUid, friendUid))
+            if (rivalSnap.exists()) {
+              const rival = rivalSnap.data() as FriendRivalDoc
+              wins = rival.wins[myUid] ?? 0
+              losses = rival.wins[friendUid] ?? 0
+              ties = rival.ties ?? 0
+            }
+          } catch {
+            // Rivals collection may be unavailable until rules are deployed
+          }
+
+          const entry: FriendEntry = {
+            uid: friendUid,
+            name,
+            addedAt: data.addedAt ?? 0,
+            wins,
+            losses,
+            ties,
+            online,
+            inMatch,
+            lastPlayedAt: timestampToMs(data.lastPlayedAt),
+          }
+          return entry
+        }),
+      )
+    ).filter((entry): entry is FriendEntry => entry !== null)
 
     entries.sort((a, b) => {
       const rank = (f: FriendEntry) => (f.inMatch ? 2 : f.online ? 1 : 0)
@@ -300,6 +342,7 @@ export class FirebaseFriendsAdapter implements FriendsPort {
 
   async listOtherPlayers(): Promise<PlayerEntry[]> {
     const myUid = await this.getUid()
+    const hideTest = !(await this.amITest())
     const [usersSnap, friendsSnap] = await Promise.all([
       getDocs(collection(getFirebaseDb(), USERS_COLLECTION)),
       getDocs(collection(getFirebaseDb(), USERS_COLLECTION, myUid, 'friends')),
@@ -308,15 +351,20 @@ export class FirebaseFriendsAdapter implements FriendsPort {
     const now = Date.now()
 
     return usersSnap.docs
-      .filter((user) => user.id !== myUid && !friendUids.has(user.id))
+      .filter((user) => {
+        if (user.id === myUid || friendUids.has(user.id)) return false
+        if (hideTest && (user.data() as UserDoc).isTest === true) return false
+        return true
+      })
       .map((user) => {
         const profile = user.data() as UserDoc
         const lastSeen = timestampToMs(profile.lastSeenAt)
+        const online = lastSeen != null && now - lastSeen < ONLINE_MS
         return {
           uid: user.id,
           name: profile.displayName?.trim() || `Oyuncu ${user.id.slice(-4).toUpperCase()}`,
-          online: lastSeen != null && now - lastSeen < ONLINE_MS,
-          inMatch: profile.inMatch === true,
+          online,
+          inMatch: effectiveInMatch(profile, online),
         }
       })
       .sort((a, b) => {

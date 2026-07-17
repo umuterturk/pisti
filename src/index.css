@@ -132,6 +132,10 @@ body {
   transition: border-color 0.2s ease, background 0.2s ease;
 }
 
+.hud:has(.hud__emojis) {
+  padding-right: 200px;
+}
+
 .hud--active {
   border-color: rgba(255, 213, 79, 0.6);
   background: rgba(255, 213, 79, 0.12);
@@ -320,6 +324,144 @@ body {
   vertical-align: middle;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
+
+.hud__emojis {
+  position: absolute;
+  right: 100px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+}
+
+.hud__emoji-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(255, 213, 79, 0.3);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.hud__emoji-btn-icon {
+  position: relative;
+  z-index: 2;
+}
+
+.hud__emoji-btn:not(:disabled):hover {
+  border-color: rgba(255, 213, 79, 0.6);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  transform: scale(1.08);
+}
+
+.hud__emoji-btn:not(:disabled):active {
+  transform: scale(0.92);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.hud__emoji-btn--cooldown {
+  cursor: not-allowed;
+  opacity: 0.6;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.hud__emoji-btn--cooldown:hover {
+  transform: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.hud__emoji-btn-fill {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 213, 79, 0.25);
+  transform-origin: center bottom;
+  transform: scaleY(var(--cooldown-progress, 0));
+  z-index: 1;
+  transition: transform 0.1s linear;
+}
+
+.emoji-animation-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emoji-burst {
+  position: absolute;
+  left: 50%;
+  font-size: 2rem;
+  will-change: transform, opacity;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+}
+
+.emoji-burst--from-top {
+  top: 60px;
+  animation: emoji-burst-from-top 1.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.emoji-burst--from-bottom {
+  bottom: 80px;
+  animation: emoji-burst-from-bottom 1.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes emoji-burst-from-top {
+  0% {
+    transform: translate(-50%, 0) scale(0.5);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, 40vh) scale(3.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, 50vh) scale(4);
+    opacity: 0;
+  }
+}
+
+@keyframes emoji-burst-from-bottom {
+  0% {
+    transform: translate(-50%, 0) scale(0.5);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -40vh) scale(3.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50vh) scale(4);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emoji-burst {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 .hud__clock--ok {
   color: #0a1f12;
   background: #7CFF9A;
@@ -407,8 +549,6 @@ body {
   flex-direction: column;
   align-items: stretch;
   gap: 0;
-  /* Clip card tops that rise above the top HUD, so the hand is cropped at the
-     top edge just like the player's hand is cropped at the bottom. */
   overflow: hidden;
 }
 

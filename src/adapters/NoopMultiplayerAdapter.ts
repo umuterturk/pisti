@@ -14,4 +14,6 @@ export class NoopMultiplayerAdapter implements MultiplayerPort {
   async leave(_forfeit?: boolean): Promise<void> {}
   async forfeitForHeartbeat(): Promise<void> {}
   getActiveMatchId(): string | null { return null }
+  async sendEmoji(_emoji: string): Promise<void> {}
+  getLocalUid(): string | null { return null }
 }

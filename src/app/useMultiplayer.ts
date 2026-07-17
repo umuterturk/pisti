@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MultiplayerPort } from '../ports'
-import type { PistiMatchSnapshot } from '../multiplayer/types'
+import type { PistiMatchSnapshot, EmojiReaction } from '../multiplayer/types'
 
 export type MpPhase =
   | 'idle'
@@ -30,6 +30,7 @@ export interface MultiplayerState {
   endedReason?: string
   winnerUid?: string | null
   error: string | null
+  reactions?: EmojiReaction[]
 }
 
 const INITIAL: MultiplayerState = {
@@ -50,6 +51,7 @@ const INITIAL: MultiplayerState = {
   localWantsRematch: false,
   opponentWantsRematch: false,
   error: null,
+  reactions: [],
 }
 
 /** Prefer a future deadline over a dead/zero one so lagging snaps don't kill the HUD timer. */
@@ -108,6 +110,7 @@ export function useMultiplayer(mp: MultiplayerPort, displayName: string) {
         opponentWantsRematch: snap.opponentWantsRematch,
         endedReason: snap.endedReason,
         winnerUid: snap.winnerUid,
+        reactions: snap.reactions ?? [],
       }
 
       if (snap.status === 'waiting') {

@@ -12,6 +12,8 @@ export interface MultiplayerPort {
   leave(forfeit?: boolean): Promise<void>
   forfeitForHeartbeat(): Promise<void>
   getActiveMatchId(): string | null
+  sendEmoji(emoji: string): Promise<void>
+  getLocalUid(): string | null
 }
 
 export interface FriendEntry {

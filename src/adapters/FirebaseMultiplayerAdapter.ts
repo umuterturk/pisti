@@ -18,7 +18,8 @@ import type { MultiplayerPort } from '../ports'
 import { TURN_TIMER } from '../app/TurnTimer'
 
 const INVITE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-const HEARTBEAT_INTERVAL_MS = 10_000
+/** Slower than before so heartbeats contend less with playMove transactions. */
+const HEARTBEAT_INTERVAL_MS = 15_000
 const ROOM_STALE_MS = 40_000
 const CREATOR_GONE_MS = 30_000
 const TURN_TIMEOUT_MS = TURN_TIMER.TURN_MS
@@ -98,6 +99,7 @@ function parseSnapshot(
     opponentWantsRematch: Boolean(data.rematchReady?.[opponentUid]),
     endedReason: data.endedReason,
     winnerUid: data.winnerUid,
+    reactions: data.reactions ?? [],
   }
 }
 
@@ -121,6 +123,10 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
     if (!this.localUid) {
       this.localUid = await ensureAnonymousAuth()
     }
+    return this.localUid
+  }
+
+  getLocalUid(): string | null {
     return this.localUid
   }
 
@@ -336,6 +342,7 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
     if (!this.matchId || !this.localUid) return
     const db = getFirebaseDb()
     const ref = this.matchRef
+    const uid = this.localUid
 
     await runTransaction(db, async (transaction) => {
       const snap = await transaction.get(ref)
@@ -346,11 +353,14 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
       if (data.moveSeq !== moveSeq) throw new Error('Stale move; retry.')
 
       const newMoves = [...(data.moves ?? []), cardId]
+      // Refresh lastSeen in the same write so active play doesn't need a
+      // separate heartbeat updateDoc (those contend with this transaction).
       transaction.update(ref, {
         moves: newMoves,
         moveSeq: moveSeq + 1,
         turnDeadline: nextDeadline,
         status: 'playing',
+        [`players.${uid}.lastSeen`]: Date.now(),
       })
     })
   }
@@ -506,5 +516,32 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
 
   getActiveMatchId(): string | null {
     return this.matchId
+  }
+
+  async sendEmoji(emoji: string): Promise<void> {
+    if (!this.matchId || !this.localUid) return
+    const ref = this.matchRef
+
+    try {
+      const snap = await getDoc(ref)
+      if (!snap.exists()) return
+
+      const data = snap.data() as PistiMatchDoc
+      const reactions = data.reactions ?? []
+      const newReaction = {
+        emoji,
+        from: this.localUid,
+        timestamp: Date.now(),
+      }
+
+      // Keep only the last 20 reactions to prevent unbounded growth
+      const updatedReactions = [...reactions, newReaction].slice(-20)
+
+      await updateDoc(ref, {
+        reactions: updatedReactions,
+      })
+    } catch {
+      // Best effort
+    }
   }
 }

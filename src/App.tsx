@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PanInfo } from 'framer-motion'
 import { CaptureLayer, type CaptureState } from './components/CaptureLayer'
 import { FlyingCardLayer } from './components/FlyingCardLayer'
+import { EmojiAnimation } from './components/EmojiAnimation'
 import {
   createFlyingCardFromThrow,
   createOpponentFlyingCard,
@@ -56,6 +57,7 @@ import { FirebaseMultiplayerAdapter } from './adapters/FirebaseMultiplayerAdapte
 import { FirebaseFriendsAdapter } from './adapters/FirebaseFriendsAdapter'
 import { LocalStorageAdapter } from './adapters/LocalStorageAdapter'
 import { ensureAnonymousAuth } from './firebase/config'
+import { publishMoveWithRetry } from './multiplayer/moveSync'
 
 const storage = new LocalStorageAdapter()
 const mpAdapter = new FirebaseMultiplayerAdapter()
@@ -67,7 +69,8 @@ const joinBootstrapCodes = new Set<string>()
 const CAPTURE_TOTAL_MS = (TIMING.capturePause + TIMING.captureMove) * 1000 + 120
 const DEAL_ANIM_MS = 950
 const TURN_MS = TURN_TIMER.TURN_MS
-const HEARTBEAT_FORFEIT_MS = 30_000
+/** Must stay > adapter heartbeat interval (15s) with room for a missed beat. */
+const HEARTBEAT_FORFEIT_MS = 45_000
 
 function log(...args: unknown[]) {
   // eslint-disable-next-line no-console
@@ -267,6 +270,10 @@ export default function App() {
   const [mpEndSynced, setMpEndSynced] = useState(false)
   // Blocks autoplay / throws once the local player has chosen to exit.
   const leavingRef = useRef(false)
+  // Last deadline we already auto-played for (cleared on publish rollback).
+  const autoPlayedDeadlineRef = useRef(0)
+  const mpStateRef = useRef(mpState)
+  mpStateRef.current = mpState
 
   // ── Deep link join ───────────────────────────────────────────────────────
   // Strict Mode mounts effects twice in dev — module Set survives remount.
@@ -321,6 +328,12 @@ export default function App() {
   const [debugMpEnd, setDebugMpEnd] = useState<ReturnType<typeof makeDebugMpEnd> | null>(null)
   const [lifetime, setLifetime] = useState<UserLifetimeStats>(() => getLifetimeStats())
   const [opponentLifetime, setOpponentLifetime] = useState<UserLifetimeStats | null>(null)
+
+  // ── Emoji handler (MP mode only) ──────────────────────────────────────────
+  const handleEmojiClick = useCallback(async (emoji: string) => {
+    if (!isMpMode || mpState.phase !== 'playing') return
+    await mpAdapter.sendEmoji(emoji)
+  }, [isMpMode, mpState.phase])
 
   // Refresh friends when returning home, and poll so opponent leave/presence updates show up
   useEffect(() => {
@@ -396,6 +409,21 @@ export default function App() {
   const flyingRef = useRef(flying); flyingRef.current = flying
   const captureRef = useRef(capture); captureRef.current = capture
   const canPlayerActRef = useRef(canPlayerAct); canPlayerActRef.current = canPlayerAct
+
+  // ── Transient state reset ─────────────────────────────────────────────────
+  const resetTransient = useCallback(() => {
+    if (landTimerRef.current !== null) { window.clearTimeout(landTimerRef.current); landTimerRef.current = null }
+    if (captureTimerRef.current !== null) { window.clearTimeout(captureTimerRef.current); captureTimerRef.current = null }
+    if (shakeTimerRef.current !== null) { window.clearTimeout(shakeTimerRef.current); shakeTimerRef.current = null }
+    if (scorePopTimerRef.current !== null) { window.clearTimeout(scorePopTimerRef.current); scorePopTimerRef.current = null }
+    setFlying(null)
+    setCapture(null)
+    setScorePop(null)
+    setPileHighlight(false)
+    setPileVisuals({})
+    setShaking(false)
+    captureResultRef.current = null
+  }, [])
 
   // ── Deal animation pause ─────────────────────────────────────────────────
   useEffect(() => {
@@ -858,6 +886,48 @@ export default function App() {
     triggerRemoteCardAnimation,
   ])
 
+  // ── MP: publish local card with retry; roll board back if Firestore rejects ─
+  // Optimistic local apply + failed publish (without rollback) deadlocks both
+  // clients on turn==='opponent'. See src/multiplayer/moveSync.test.ts.
+  const rollbackMpToAuthority = useCallback(() => {
+    const mp = mpStateRef.current
+    if (!mp.seed || mp.localSeat === null || mp.firstSeat === null) {
+      appliedMovesRef.current = mp.moves.length
+      return
+    }
+    log('Rolling back board to authoritative moves', { moves: mp.moves.length })
+    resetTransient()
+    const hydrated = hydrateGameState(
+      mp.seed,
+      mp.moves,
+      mp.localSeat,
+      mp.firstSeat,
+      gamesRef.current,
+      mp.round,
+    )
+    resetToState(hydrated)
+    appliedMovesRef.current = mp.moves.length
+    // Allow autoplay to re-arm for the same deadline after a failed publish.
+    autoPlayedDeadlineRef.current = 0
+  }, [resetTransient, resetToState])
+
+  const publishMpCard = useCallback(
+    (cardId: string) => {
+      const seq = appliedMovesRef.current
+      appliedMovesRef.current += 1
+      const publish = publishMoveWithRetry(
+        (id, moveSeq, nextDeadline) => mpAdapter.playMove(id, moveSeq, nextDeadline),
+        { cardId, moveSeq: seq, nextDeadline: Date.now() + TURN_MS },
+      ).then((outcome) => {
+        if (outcome === 'ok' || outcome === 'match_ended') return
+        log('playMove failed after retries — rolling back to authority')
+        rollbackMpToAuthority()
+      })
+      publishChainRef.current = publishChainRef.current.then(() => publish, () => publish)
+    },
+    [rollbackMpToAuthority],
+  )
+
   // ── Player throw ──────────────────────────────────────────────────────────
   const handlePlayerThrow = useCallback(
     (card: CardType, info: PanInfo, element: HTMLElement) => {
@@ -876,18 +946,10 @@ export default function App() {
       launchFlight(result, createFlyingCardFromThrow(card, element, target, info.velocity, info.offset, result.pisti))
 
       if (isMpMode && mpState.phase === 'playing' && !leavingRef.current) {
-        const seq = appliedMovesRef.current
-        appliedMovesRef.current += 1
-        const publish = mpAdapter.playMove(card.id, seq, Date.now() + TURN_MS).catch((err) => {
-          const message = err instanceof Error ? err.message : String(err)
-          log('playMove failed', message)
-          // Match already ended (resign/forfeit) — don't roll back or rethrow
-          if (message !== 'Match ended.') appliedMovesRef.current -= 1
-        })
-        publishChainRef.current = publishChainRef.current.then(() => publish, () => publish)
+        publishMpCard(card.id)
       }
     },
-    [isMpMode, state.turn, getPileTarget, playPlayerCard, launchFlight, mpState.phase],
+    [isMpMode, state.turn, getPileTarget, playPlayerCard, launchFlight, mpState.phase, publishMpCard],
   )
 
   // ── Bot opponent (solo only) ──────────────────────────────────────────────
@@ -921,7 +983,6 @@ export default function App() {
   // ── Turn timer auto-play (MP only) ────────────────────────────────────────
   // Returns true only when a card was actually played — callers must retry
   // when false (e.g. refresh landed during deal / hydrate before we can act).
-  const autoPlayedDeadlineRef = useRef(0)
   const handleTurnExpire = useCallback((): boolean => {
     if (leavingRef.current) return false
     if (!isMpMode || mpState.phase !== 'playing') return false
@@ -951,17 +1012,9 @@ export default function App() {
 
     if (leavingRef.current || mpState.phase !== 'playing') return true
 
-    const seq = appliedMovesRef.current
-    appliedMovesRef.current += 1
-    const publish = mpAdapter.playMove(card.id, seq, Date.now() + TURN_MS).catch((err) => {
-      const message = err instanceof Error ? err.message : String(err)
-      log('auto-play publish failed', message)
-      // Expected race: opponent resigned/forfeited while our timer autoplay fired
-      if (message !== 'Match ended.') appliedMovesRef.current -= 1
-    })
-    publishChainRef.current = publishChainRef.current.then(() => publish, () => publish)
+    publishMpCard(card.id)
     return true
-  }, [isMpMode, mpState.phase, mpState.turnDeadline, state.phase, state.turn, state.gameOver, state.playerHand, state.pile, dealing, flying, capture, playPlayerCard, getPileTarget, launchFlight, applyLanding, resolvePlay])
+  }, [isMpMode, mpState.phase, mpState.turnDeadline, state.phase, state.turn, state.gameOver, state.playerHand, state.pile, dealing, flying, capture, playPlayerCard, getPileTarget, launchFlight, applyLanding, resolvePlay, publishMpCard])
 
   // Watchdog: HUD onExpire is one-shot and can fire while dealing/hydrating after a
   // refresh. Re-arm until autoplay succeeds for this deadline (incl. already-past).
@@ -994,21 +1047,6 @@ export default function App() {
     mpState.phase,
     mpHydrated,
   ])
-
-  // ── Transient state reset ─────────────────────────────────────────────────
-  const resetTransient = useCallback(() => {
-    if (landTimerRef.current !== null) { window.clearTimeout(landTimerRef.current); landTimerRef.current = null }
-    if (captureTimerRef.current !== null) { window.clearTimeout(captureTimerRef.current); captureTimerRef.current = null }
-    if (shakeTimerRef.current !== null) { window.clearTimeout(shakeTimerRef.current); shakeTimerRef.current = null }
-    if (scorePopTimerRef.current !== null) { window.clearTimeout(scorePopTimerRef.current); scorePopTimerRef.current = null }
-    setFlying(null)
-    setCapture(null)
-    setScorePop(null)
-    setPileHighlight(false)
-    setPileVisuals({})
-    setShaking(false)
-    captureResultRef.current = null
-  }, [])
 
   useEffect(() => {
     return () => {
@@ -1450,6 +1488,8 @@ export default function App() {
           onScoreClick={handlePlayerScoreClick}
           turnDeadline={localTurnDeadline}
           onTurnExpire={handleTurnExpire}
+          isMultiplayer={isMpMode}
+          onEmojiClick={handleEmojiClick}
         />
       </div>
 
@@ -1490,6 +1530,13 @@ export default function App() {
       <FlyingCardLayer flying={flying} />
       <CaptureLayer capture={capture} visuals={pileVisuals} />
       <ScorePopLayer pop={scorePop} />
+
+      {isMpMode && mpState.reactions && mpAdapter.getLocalUid() && (
+        <EmojiAnimation
+          reactions={mpState.reactions}
+          localUid={mpAdapter.getLocalUid()!}
+        />
+      )}
 
       {showSoloEnd && (
         <GameOver

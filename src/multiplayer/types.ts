@@ -8,6 +8,12 @@ export interface PistiMatchPlayer {
   left?: boolean
 }
 
+export interface EmojiReaction {
+  emoji: string
+  from: string
+  timestamp: number
+}
+
 /**
  * Firestore document shape for pisti-matches/{matchId}.
  *
@@ -38,6 +44,8 @@ export interface PistiMatchDoc {
   winnerUid?: string | null
   /** Seat (0 or 1) of the player who won the completed round. Null on a tie. Only set for endedReason: 'completed'. */
   winnerSeat?: 0 | 1 | null
+  /** Latest emoji reactions sent between players */
+  reactions?: EmojiReaction[]
 }
 
 /** Parsed view of a match snapshot, from the local player's perspective. */
@@ -61,4 +69,5 @@ export interface PistiMatchSnapshot {
   opponentWantsRematch: boolean
   endedReason?: string
   winnerUid?: string | null
+  reactions?: EmojiReaction[]
 }

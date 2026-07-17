@@ -576,70 +576,70 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .emoji-burst {
   position: absolute;
-  left: 50%;
   font-size: 2rem;
   will-change: transform, opacity;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
 }
 
-/* 2s total; opacity held until 75% so the fade-out takes the last 0.5s */
+/* Opponent → left side of the table; player → right side. */
 .emoji-burst--from-top {
   top: 60px;
+  left: 14%;
   animation: emoji-burst-from-top 2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 .emoji-burst--from-bottom {
   bottom: 80px;
+  right: 14%;
+  left: auto;
   animation: emoji-burst-from-bottom 2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+/* 2s total; opacity held until 75% so the fade-out takes the last 0.5s */
 @keyframes emoji-burst-from-top {
   0% {
-    transform: translate(-50%, 0) scale(0.5);
+    transform: translate(-50%, 0) scale(0.5) rotate(-8deg);
     opacity: 0;
   }
   15% {
     opacity: 1;
   }
   45% {
-    transform: translate(-50%, 40vh) scale(3.5);
+    transform: translate(-30%, 38vh) scale(3.2) rotate(-4deg);
     opacity: 1;
   }
   75% {
-    transform: translate(-50%, 48vh) scale(3.8);
+    transform: translate(-20%, 46vh) scale(3.6) rotate(2deg);
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, 50vh) scale(6.5);
+    transform: translate(-10%, 52vh) scale(5.5) rotate(6deg);
     opacity: 0;
   }
 }
 
 @keyframes emoji-burst-from-bottom {
   0% {
-    transform: translate(-50%, 0) scale(0.5);
+    transform: translate(50%, 0) scale(0.5) rotate(8deg);
     opacity: 0;
   }
   15% {
     opacity: 1;
   }
   45% {
-    transform: translate(-50%, -40vh) scale(3.5);
+    transform: translate(30%, -38vh) scale(3.2) rotate(4deg);
     opacity: 1;
   }
   75% {
-    transform: translate(-50%, -48vh) scale(3.8);
+    transform: translate(20%, -46vh) scale(3.6) rotate(-2deg);
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, -50vh) scale(6.5);
+    transform: translate(10%, -52vh) scale(5.5) rotate(-6deg);
     opacity: 0;
   }
 }

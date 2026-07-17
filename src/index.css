@@ -1876,6 +1876,16 @@ body {
   margin-top: 4px;
 }
 
+.friends-section-title {
+  width: 100%;
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: rgba(255, 255, 255, 0.55);
+  text-transform: uppercase;
+}
+
 .friends-list {
   list-style: none;
   margin: 0;
@@ -2008,6 +2018,112 @@ body {
 .friends-row__invite:not(:disabled):active {
   transform: translateY(2px);
   box-shadow: 0 1px 0 #006064;
+}
+
+.friends-row__add {
+  flex-shrink: 0;
+  min-width: 64px;
+  border: none;
+  border-radius: 100px;
+  background: linear-gradient(135deg, #81c784, #2e7d32);
+  color: #061c08;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 11px 14px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #1b5e20;
+}
+
+.friends-row__add:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+.friends-row__add:not(:disabled):active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #1b5e20;
+}
+
+.friends-row__remove {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
+}
+
+.friends-row__remove svg {
+  width: 18px;
+  height: 18px;
+}
+
+.friends-row__remove:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.friends-row__remove:not(:disabled):active {
+  transform: translateY(1px);
+  background: rgba(229, 57, 53, 0.22);
+  color: #ff6f60;
+}
+
+.friends-row__confirm {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.friends-row__confirm-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  margin-right: 2px;
+}
+
+.friends-row__confirm-yes,
+.friends-row__confirm-no {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 100px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 9px 12px;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.friends-row__confirm-yes {
+  background: linear-gradient(135deg, #ef5350, #c62828);
+  color: #fff;
+  box-shadow: 0 3px 0 #8e1c1c;
+}
+
+.friends-row__confirm-yes:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #8e1c1c;
+}
+
+.friends-row__confirm-no {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.friends-row__confirm-no:active {
+  transform: translateY(1px);
 }
 
 .friends-new-invite {

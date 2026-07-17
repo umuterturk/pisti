@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { getLifetimeStats } from '../game/lifetimeStats'
-import type { FriendEntry } from '../ports'
+import type { FriendEntry, PlayerEntry } from '../ports'
 import { Card } from './Card'
 import { FriendsPage } from './FriendsPage'
 import { NewGameDialog } from './NewGameDialog'
@@ -11,11 +11,14 @@ interface StartScreenProps {
   defaultBotId: string
   username: string
   friends: FriendEntry[]
+  otherPlayers: PlayerEntry[]
   friendsLoading: boolean
   invitingUid: string | null
   onStart: (botId: string) => void
   onPlayWithFriend: () => void
   onInviteFriend: (friend: FriendEntry) => void
+  onRemoveFriend: (uid: string) => void
+  onAddFriend: (player: PlayerEntry) => Promise<void>
   onEditName: () => void
   onRefreshFriends: (opts?: { silent?: boolean }) => void
 }
@@ -49,11 +52,14 @@ export function StartScreen({
   defaultBotId,
   username,
   friends,
+  otherPlayers,
   friendsLoading,
   invitingUid,
   onStart,
   onPlayWithFriend,
   onInviteFriend,
+  onRemoveFriend,
+  onAddFriend,
   onEditName,
   onRefreshFriends,
 }: StartScreenProps) {
@@ -178,9 +184,12 @@ export function StartScreen({
             ) : (
               <FriendsPage
                 friends={friends}
+                otherPlayers={otherPlayers}
                 loading={friendsLoading}
                 invitingUid={invitingUid}
                 onInviteFriend={onInviteFriend}
+                onRemoveFriend={onRemoveFriend}
+                onAddFriend={onAddFriend}
                 onPlayWithFriend={onPlayWithFriend}
               />
             )}

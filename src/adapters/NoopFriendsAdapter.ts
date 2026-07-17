@@ -1,4 +1,10 @@
-import type { FriendEntry, FriendsPort, GameRequest, UserLifetimeStats } from '../ports'
+import type {
+  FriendEntry,
+  FriendsPort,
+  GameRequest,
+  PlayerEntry,
+  UserLifetimeStats,
+} from '../ports'
 
 export class NoopFriendsAdapter implements FriendsPort {
   async syncProfile(_displayName: string): Promise<void> {}
@@ -8,10 +14,14 @@ export class NoopFriendsAdapter implements FriendsPort {
     return null
   }
   async addFriend(_uid: string, _name: string): Promise<void> {}
+  async removeFriend(_uid: string): Promise<void> {}
   async isFriend(_uid: string): Promise<boolean> {
     return false
   }
   async listFriends(): Promise<FriendEntry[]> {
+    return []
+  }
+  async listOtherPlayers(): Promise<PlayerEntry[]> {
     return []
   }
   async recordMatchResult(

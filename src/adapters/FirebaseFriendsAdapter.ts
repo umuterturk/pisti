@@ -5,6 +5,7 @@ import {
   collection,
   setDoc,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
   runTransaction,
   onSnapshot,
@@ -28,6 +29,7 @@ import type {
   FriendsPort,
   GameRequest,
   GameRequestStatus,
+  PlayerEntry,
   UserLifetimeStats,
 } from '../ports'
 
@@ -202,6 +204,16 @@ export class FirebaseFriendsAdapter implements FriendsPort {
     } satisfies FriendDoc)
   }
 
+  async removeFriend(uid: string): Promise<void> {
+    const myUid = await this.getUid()
+    if (myUid === uid) return
+    // Delete both directions so neither side keeps a one-way friendship.
+    await Promise.all([
+      deleteDoc(this.friendRef(myUid, uid)),
+      deleteDoc(this.friendRef(uid, myUid)),
+    ])
+  }
+
   async isFriend(uid: string): Promise<boolean> {
     const myUid = await this.getUid()
     try {
@@ -284,6 +296,33 @@ export class FirebaseFriendsAdapter implements FriendsPort {
     })
 
     return entries
+  }
+
+  async listOtherPlayers(): Promise<PlayerEntry[]> {
+    const myUid = await this.getUid()
+    const [usersSnap, friendsSnap] = await Promise.all([
+      getDocs(collection(getFirebaseDb(), USERS_COLLECTION)),
+      getDocs(collection(getFirebaseDb(), USERS_COLLECTION, myUid, 'friends')),
+    ])
+    const friendUids = new Set(friendsSnap.docs.map((friend) => friend.id))
+    const now = Date.now()
+
+    return usersSnap.docs
+      .filter((user) => user.id !== myUid && !friendUids.has(user.id))
+      .map((user) => {
+        const profile = user.data() as UserDoc
+        const lastSeen = timestampToMs(profile.lastSeenAt)
+        return {
+          uid: user.id,
+          name: profile.displayName?.trim() || `Oyuncu ${user.id.slice(-4).toUpperCase()}`,
+          online: lastSeen != null && now - lastSeen < ONLINE_MS,
+          inMatch: profile.inMatch === true,
+        }
+      })
+      .sort((a, b) => {
+        const rank = (player: PlayerEntry) => (player.inMatch ? 2 : player.online ? 1 : 0)
+        return rank(b) - rank(a) || a.name.localeCompare(b.name, 'tr')
+      })
   }
 
   async recordMatchResult(

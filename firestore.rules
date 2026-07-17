@@ -15,7 +15,11 @@ service cloud.firestore {
 
       match /friends/{friendUid} {
         allow read: if request.auth != null && request.auth.uid == uid;
-        allow write: if request.auth != null && request.auth.uid == uid;
+        allow create, update: if request.auth != null && request.auth.uid == uid;
+        // Owner can remove anyone from their list; the friend can remove the
+        // reverse link pointing at themselves (friendUid == their uid).
+        allow delete: if request.auth != null
+          && (request.auth.uid == uid || request.auth.uid == friendUid);
       }
     }
 

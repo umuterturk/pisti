@@ -209,9 +209,12 @@ export default function App() {
 
   const {
     friendList,
+    otherPlayers,
     loading: friendsLoading,
     refresh: refreshFriends,
     incomingRequest,
+    removeFriend,
+    addFriend,
     sendChallenge,
     acceptRequest,
     declineRequest,
@@ -1525,11 +1528,14 @@ export default function App() {
         defaultBotId={state.activeBotId}
         username={username}
         friends={friendList}
+        otherPlayers={otherPlayers}
         friendsLoading={friendsLoading}
         invitingUid={invitingUid}
         onStart={handleStart}
         onPlayWithFriend={() => void handlePlayWithFriend()}
         onInviteFriend={(friend) => void handleInviteFriend(friend)}
+        onRemoveFriend={(uid) => void removeFriend(uid)}
+        onAddFriend={addFriend}
         onEditName={() => setEditingName(true)}
         onRefreshFriends={refreshFriends}
       />

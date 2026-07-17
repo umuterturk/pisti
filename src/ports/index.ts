@@ -26,6 +26,13 @@ export interface FriendEntry {
   lastPlayedAt?: number
 }
 
+export interface PlayerEntry {
+  uid: string
+  name: string
+  online: boolean
+  inMatch: boolean
+}
+
 export type GameRequestStatus = 'pending' | 'accepted' | 'declined' | 'expired'
 
 export interface GameRequest {
@@ -53,8 +60,10 @@ export interface FriendsPort {
   /** Read another player's published lifetime tallies (or null if missing). */
   getUserStats(uid: string): Promise<UserLifetimeStats | null>
   addFriend(uid: string, name: string): Promise<void>
+  removeFriend(uid: string): Promise<void>
   isFriend(uid: string): Promise<boolean>
   listFriends(): Promise<FriendEntry[]>
+  listOtherPlayers(): Promise<PlayerEntry[]>
   /** Update head-to-head W/L/T against a friend (idempotent per resultId). */
   recordMatchResult(
     opponentUid: string,

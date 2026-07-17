@@ -689,7 +689,12 @@ export default function App() {
           const data = snap.data() as { status?: string }
           // Don't clobber resign / heartbeat forfeits with "completed"
           if (data.status === 'ended') return
-          tx.update(ref, { status: 'ended', endedReason: 'completed' })
+          const winner = state.scoreboard?.winner
+          const winnerSeat: 0 | 1 | null =
+            winner === 'player' ? mpState.localSeat :
+            winner === 'opponent' ? ((1 - (mpState.localSeat ?? 0)) as 0 | 1) :
+            null
+          tx.update(ref, { status: 'ended', endedReason: 'completed', winnerSeat })
         })
       } catch { /* best effort */ }
     })()

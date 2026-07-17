@@ -371,8 +371,19 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
       const bothReady = playerUids.length === 2 && playerUids.every((p) => rematchReady[p])
 
       if (bothReady) {
-        // Keep seats stable; flip who leads and deal a fresh seed.
-        const newFirstSeat: 0 | 1 = data.firstSeat === 0 ? 1 : 0
+        // Winner of the previous round leads the next one.
+        // 1. Completed game: winnerSeat was written when the round ended.
+        // 2. Resign / forfeit: derive from winnerUid + seats.
+        // 3. Tie or unknown: keep the same firstSeat (mirrors solo tie behaviour).
+        let newFirstSeat: 0 | 1
+        if (data.winnerSeat !== null && data.winnerSeat !== undefined) {
+          newFirstSeat = data.winnerSeat
+        } else if (data.winnerUid && data.seats) {
+          const entry = Object.entries(data.seats).find(([, seatUid]) => seatUid === data.winnerUid)
+          newFirstSeat = entry ? (Number(entry[0]) as 0 | 1) : (data.firstSeat ?? 0)
+        } else {
+          newFirstSeat = data.firstSeat ?? 0
+        }
         const update: Record<string, unknown> = {
           seed: generateSeed(),
           status: 'ready',
@@ -384,6 +395,7 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
           firstSeat: newFirstSeat,
           endedReason: null,
           winnerUid: null,
+          winnerSeat: null,
         }
         for (const p of playerUids) {
           update[`players.${p}.resigned`] = false

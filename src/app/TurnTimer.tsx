@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 /** Seconds per multiplayer turn before auto-play. */
-export const TURN_MS = 7_000
+export const TURN_MS = 15_000
 /** Outer diameter of the badge while the timer is running */
 const SIZE = 68
 const STROKE = 5

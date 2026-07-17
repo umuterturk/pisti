@@ -36,6 +36,8 @@ export interface PistiMatchDoc {
   rematchReady?: Record<string, boolean>
   endedReason?: 'completed' | 'forfeit_heartbeat' | 'resign'
   winnerUid?: string | null
+  /** Seat (0 or 1) of the player who won the completed round. Null on a tie. Only set for endedReason: 'completed'. */
+  winnerSeat?: 0 | 1 | null
 }
 
 /** Parsed view of a match snapshot, from the local player's perspective. */

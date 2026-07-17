@@ -33,6 +33,7 @@ function freshSim(startingTurn: Turn): SimState {
     opponentDoublePisti: 0,
     lastCapturer: null,
     turn: startingTurn,
+    localSeat: 0,
   }
 }
 

@@ -1,6 +1,35 @@
-# React + TypeScript + Vite
+# Pişti
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A Turkish card game with solo (vs AI) and **multiplayer** (play with a friend via share link).
+
+## Multiplayer setup
+
+Firebase project: **pisti-rush** (credentials in `.env.local`).
+
+### One-time Firebase Console steps
+
+1. **Authentication → Sign-in method** — enable **Anonymous**
+2. **Authentication → Settings → Authorized domains** — ensure `localhost` and your hosting domain are listed
+
+### Deploy Firestore rules + indexes
+
+```bash
+npm install -g firebase-tools   # if needed
+firebase login
+cd pisti
+firebase deploy --only firestore
+```
+
+Files:
+- `firestore.rules` — security rules
+- `firestore.indexes.json` — composite index for `inviteCode` + `status` join queries
+- `firebase.json` — Firebase CLI config (also includes hosting → `dist`)
+
+Collections:
+- `pisti-matches` — live game rooms (move log, seats, heartbeats)
+- `pisti-users` — player profiles + friend sub-collection
+
+## Development
 
 Currently, two official plugins are available:
 

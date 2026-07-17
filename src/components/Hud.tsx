@@ -1,4 +1,5 @@
 import { memo, type RefObject } from 'react'
+import { HudTimerRing, useTurnTimer } from '../app/TurnTimer'
 import { RollingScore } from './RollingScore'
 
 interface HudProps {
@@ -13,17 +14,39 @@ interface HudProps {
   scoreRef?: RefObject<HTMLSpanElement | null>
   /** Opens the scoring legend popup. */
   onScoreClick?: () => void
+  /** Multiplayer turn deadline (epoch ms). 0 = no timer. */
+  turnDeadline?: number
+  /** Fired once when this side's timer hits zero. */
+  onTurnExpire?: () => void
 }
 
-function HudComponent({ name, score, cards, active, side, thinking, scoreRef, onScoreClick }: HudProps) {
+function HudComponent({
+  name,
+  score,
+  cards,
+  active,
+  side,
+  thinking,
+  scoreRef,
+  onScoreClick,
+  turnDeadline = 0,
+  onTurnExpire,
+}: HudProps) {
   const initial = name.charAt(0).toUpperCase()
+  const timer = useTurnTimer(turnDeadline, onTurnExpire)
+  const urgencyClass = timer.urgency ? ` hud__badge--timer hud__badge--${timer.urgency}` : ''
+
   return (
     <div className={`hud hud--${side} ${active ? 'hud--active' : ''}`}>
       <div className="hud__id">
         <div className="hud__avatar">{initial}</div>
         <div className="hud__name">
           {name}
-          {thinking ? (
+          {timer.active ? (
+            <span className={`hud__clock hud__clock--${timer.urgency ?? 'ok'}`}>
+              {timer.seconds}s
+            </span>
+          ) : thinking ? (
             <span className="hud__thinking">
               Düşünüyor
               <span className="hud__thinking-dots">
@@ -39,10 +62,13 @@ function HudComponent({ name, score, cards, active, side, thinking, scoreRef, on
       </div>
       <button
         type="button"
-        className="hud__badge"
+        className={`hud__badge${urgencyClass}`}
         onClick={onScoreClick}
         aria-label="Puanlamayı göster"
       >
+        {timer.active && (
+          <HudTimerRing dashOffset={timer.dashOffset} urgency={timer.urgency} />
+        )}
         <RollingScore value={score} className="hud__score" innerRef={scoreRef} />
         <span className="hud__cards">
           {cards}

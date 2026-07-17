@@ -44,6 +44,7 @@ function sampleWorld(ctx: BotContext, rng: Rng): SimState {
     opponentDoublePisti: 0,
     lastCapturer: null,
     turn: 'opponent',
+    localSeat: 0,
   }
 }
 

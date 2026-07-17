@@ -24,6 +24,13 @@ export interface SimState {
   opponentDoublePisti: number
   lastCapturer: Turn | null
   turn: Turn
+  /**
+   * Which absolute seat the local "player" is sitting in.
+   * Seat 0 always receives the first chunk of each deal/refill; seat 1 the second.
+   * Solo games leave this at 0. Multiplayer MUST set it so both clients refill
+   * identically from the shared deck.
+   */
+  localSeat: 0 | 1
 }
 
 function other(turn: Turn): Turn {
@@ -87,8 +94,13 @@ export function applyMove(s: SimState, cardId: string): { next: SimState; refill
 
   let refilled = false
   if (playerHand.length === 0 && opponentHand.length === 0 && deck.length > 0) {
-    playerHand = deck.slice(0, HAND_SIZE)
-    opponentHand = deck.slice(HAND_SIZE, HAND_SIZE * 2)
+    // Absolute seat order: seat 0 always gets the next 4, seat 1 the following 4.
+    // Map into local player/opponent based on localSeat so both clients stay in sync.
+    const seat0Hand = deck.slice(0, HAND_SIZE)
+    const seat1Hand = deck.slice(HAND_SIZE, HAND_SIZE * 2)
+    const seat = s.localSeat ?? 0
+    playerHand = seat === 0 ? seat0Hand : seat1Hand
+    opponentHand = seat === 0 ? seat1Hand : seat0Hand
     deck = deck.slice(HAND_SIZE * 2)
     refilled = true
   }
@@ -108,6 +120,7 @@ export function applyMove(s: SimState, cardId: string): { next: SimState; refill
       opponentDoublePisti,
       lastCapturer,
       turn: other(who),
+      localSeat: s.localSeat ?? 0,
     },
   }
 }

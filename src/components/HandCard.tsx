@@ -167,6 +167,7 @@ function HandCardComponent({
     <motion.div
       ref={ref}
       className="hand-card"
+      data-card-id={card.id}
       drag={!disabled}
       dragElastic={0.14}
       dragMomentum={false}

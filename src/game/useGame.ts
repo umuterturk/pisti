@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { getBot, DEFAULT_BOT_ID } from './bots/registry'
 import type { BotContext } from './bots/types'
-import { dealNewGame, type Card } from './cards'
+import { dealNewGame, dealNewGameSeeded, type Card } from './cards'
 import { applyMove, finalScore, HAND_SIZE, isTerminal, type SimState } from './engine'
 import { checkCapture, type Scoreboard } from './rules'
 import { randomRng } from './rng'
@@ -52,6 +52,11 @@ export interface GameState {
   dealSerial: number
   /** Id of the opponent bot profile for this match (persists between hands). */
   activeBotId: string
+  /**
+   * Absolute seat for the local player (0 or 1). Used so multiplayer refills
+   * deal the same cards to the same seats on both clients. Solo = 0.
+   */
+  localSeat: 0 | 1
 }
 
 // Monotonic counter so every fresh deal produces a unique serial, even if two
@@ -92,6 +97,144 @@ function freshState(
     gameNumber,
     dealSerial: nextDealSerial(),
     activeBotId,
+    localSeat: 0,
+  }
+}
+
+/** Empty board used while rejoining a multiplayer match (avoids a random solo deal flash). */
+export function blankMpWaitingState(): GameState {
+  return {
+    deck: [],
+    playerHand: [],
+    opponentHand: [],
+    pile: [],
+    playerCollected: [],
+    opponentCollected: [],
+    playerPisti: 0,
+    opponentPisti: 0,
+    playerDoublePisti: 0,
+    opponentDoublePisti: 0,
+    pistiStreak: 0,
+    lastCapturer: null,
+    turn: 'player',
+    phase: 'idle',
+    gameOver: false,
+    scoreboard: null,
+    games: { player: 0, opponent: 0 },
+    gameNumber: 1,
+    dealSerial: 0,
+    activeBotId: DEFAULT_BOT_ID,
+    localSeat: 0,
+  }
+}
+
+/**
+ * Build a GameState by dealing from `seed` and replaying `moves[]`.
+ * Used on multiplayer start and on rejoin/refresh to restore state.
+ *
+ * `localSeat` (0 | 1) determines which dealt hand becomes `playerHand`.
+ * `firstSeat` (0 | 1) determines who plays the first move.
+ */
+export function hydrateGameState(
+  seed: string,
+  moves: string[],
+  localSeat: 0 | 1,
+  firstSeat: 0 | 1,
+  games: MatchScore = { player: 0, opponent: 0 },
+  gameNumber = 1,
+): GameState {
+  const { playerHand, opponentHand, table, deck } = dealNewGameSeeded(seed, localSeat)
+  const startingTurn: Turn = firstSeat === localSeat ? 'player' : 'opponent'
+
+  let sim: SimState = {
+    deck,
+    playerHand,
+    opponentHand,
+    pile: table,
+    playerCollected: [],
+    opponentCollected: [],
+    playerPisti: 0,
+    opponentPisti: 0,
+    playerDoublePisti: 0,
+    opponentDoublePisti: 0,
+    lastCapturer: null,
+    turn: startingTurn,
+    localSeat,
+  }
+
+  let pistiStreak = 0
+  let dealSerial = nextDealSerial()
+
+  for (const cardId of moves) {
+    const { captured, pisti } = checkCapture(
+      [...sim.playerHand, ...sim.opponentHand].find((c) => c.id === cardId)!,
+      sim.pile,
+    )
+    pistiStreak = captured ? (pisti ? pistiStreak + 1 : 0) : pistiStreak
+    const { next, refilled } = applyMove(sim, cardId)
+    if (refilled) dealSerial = nextDealSerial()
+    sim = next
+  }
+
+  if (isTerminal(sim)) {
+    const scoreboard = finalScore(sim)
+    let playerCollected = sim.playerCollected
+    let opponentCollected = sim.opponentCollected
+    if (sim.pile.length > 0 && sim.lastCapturer) {
+      if (sim.lastCapturer === 'player') playerCollected = [...playerCollected, ...sim.pile]
+      else opponentCollected = [...opponentCollected, ...sim.pile]
+    }
+    const updatedGames: MatchScore = {
+      player: games.player + (scoreboard.winner === 'player' ? 1 : 0),
+      opponent: games.opponent + (scoreboard.winner === 'opponent' ? 1 : 0),
+    }
+    return {
+      deck: sim.deck,
+      playerHand: sim.playerHand,
+      opponentHand: sim.opponentHand,
+      pile: [],
+      playerCollected,
+      opponentCollected,
+      playerPisti: sim.playerPisti,
+      opponentPisti: sim.opponentPisti,
+      playerDoublePisti: sim.playerDoublePisti,
+      opponentDoublePisti: sim.opponentDoublePisti,
+      pistiStreak,
+      lastCapturer: sim.lastCapturer,
+      turn: sim.turn,
+      phase: 'idle',
+      gameOver: true,
+      scoreboard,
+      games: updatedGames,
+      gameNumber,
+      dealSerial,
+      activeBotId: DEFAULT_BOT_ID,
+      localSeat,
+    }
+  }
+
+  return {
+    deck: sim.deck,
+    playerHand: sim.playerHand,
+    opponentHand: sim.opponentHand,
+    pile: sim.pile,
+    playerCollected: sim.playerCollected,
+    opponentCollected: sim.opponentCollected,
+    playerPisti: sim.playerPisti,
+    opponentPisti: sim.opponentPisti,
+    playerDoublePisti: sim.playerDoublePisti,
+    opponentDoublePisti: sim.opponentDoublePisti,
+    pistiStreak,
+    lastCapturer: sim.lastCapturer,
+    turn: sim.turn,
+    phase: 'idle',
+    gameOver: false,
+    scoreboard: null,
+    games,
+    gameNumber,
+    dealSerial,
+    activeBotId: DEFAULT_BOT_ID,
+    localSeat,
   }
 }
 
@@ -111,6 +254,7 @@ function toSimState(g: GameState): SimState {
     opponentDoublePisti: g.opponentDoublePisti,
     lastCapturer: g.lastCapturer,
     turn: g.turn,
+    localSeat: g.localSeat ?? 0,
   }
 }
 
@@ -328,6 +472,54 @@ export function useGame(initialState?: GameState) {
     return result
   }, [apply])
 
+  /**
+   * Multiplayer: play a specific card for the current turn's side.
+   * Used for remote opponent moves (card id comes from Firestore), and for
+   * auto-play when the local player's timer expires (player or opponent side).
+   */
+  const applyRemoteCard = useCallback(
+    (cardId: string): PlayResult | null => {
+      const prev = stateRef.current
+      if (prev.phase !== 'idle' || prev.gameOver) return null
+
+      const hand = prev.turn === 'player' ? prev.playerHand : prev.opponentHand
+      const card = hand.find((c) => c.id === cardId)
+      if (!card) return null
+
+      const { captured, pisti, doublePisti } = checkCapture(card, prev.pile)
+      const result: PlayResult = {
+        who: prev.turn,
+        playedCard: card,
+        captured,
+        pisti,
+        doublePisti,
+        pistiStreak: pisti ? prev.pistiStreak + 1 : 0,
+        capturedCards: [...prev.pile, card],
+      }
+
+      if (prev.turn === 'player') {
+        apply({ ...prev, playerHand: prev.playerHand.filter((c) => c.id !== cardId), phase: 'animating' })
+      } else {
+        apply({ ...prev, opponentHand: prev.opponentHand.filter((c) => c.id !== cardId), phase: 'animating' })
+      }
+
+      return result
+    },
+    [apply],
+  )
+
+  /**
+   * Reset the game state to a hydrated multiplayer snapshot without triggering
+   * the bot effect. Returns a new GameState; caller should recreate the hook
+   * or call this via a dedicated `resetToMpState` action.
+   */
+  const resetToState = useCallback(
+    (nextState: GameState) => {
+      apply(nextState)
+    },
+    [apply],
+  )
+
   const resolvePlay = useCallback(
     (result: PlayResult) => {
       const prev = stateRef.current
@@ -366,6 +558,8 @@ export function useGame(initialState?: GameState) {
     reorderPlayerHand,
     playPlayerCard,
     playOpponentCard,
+    applyRemoteCard,
+    resetToState,
     resolvePlay,
   }
 }

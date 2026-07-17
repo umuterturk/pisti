@@ -43,6 +43,72 @@ export function shuffle<T>(items: T[]): T[] {
   return copy
 }
 
+/**
+ * Convert an arbitrary string seed into a 32-bit integer for mulberry32.
+ * Simple djb2-style hash — deterministic across clients for the same string.
+ */
+function hashSeed(seed: string): number {
+  let h = 5381
+  for (let i = 0; i < seed.length; i++) {
+    h = ((h * 33) ^ seed.charCodeAt(i)) >>> 0
+  }
+  return h
+}
+
+/**
+ * mulberry32 PRNG — same one used in rng.ts, copied here to avoid circular
+ * imports between cards ↔ rng.
+ */
+function makeRng(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * Deterministic Fisher-Yates shuffle seeded from a string.
+ * Both clients calling this with the same seed string produce the same order.
+ */
+export function shuffleWithSeed<T>(items: T[], seed: string): T[] {
+  const rng = makeRng(hashSeed(seed))
+  const copy = [...items]
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[copy[i], copy[j]] = [copy[j], copy[i]]
+  }
+  return copy
+}
+
+/**
+ * Seeded deal: same distribution as dealNewGame but deterministic.
+ * `localSeat` determines which hand becomes `playerHand` from the local
+ * player's perspective:
+ *   seat 0 → first 4 cards dealt are the local player's hand
+ *   seat 1 → second 4 cards dealt are the local player's hand
+ */
+export function dealNewGameSeeded(seed: string, localSeat: 0 | 1, handSize = 4, tableSize = 4): Deal {
+  const shuffled = shuffleWithSeed(createDeck(), seed)
+  let cursor = 0
+  const take = (n: number) => shuffled.slice(cursor, (cursor += n))
+
+  const hand0 = take(handSize)
+  const hand1 = take(handSize)
+  const table = take(tableSize)
+  const deck = shuffled.slice(cursor)
+
+  return {
+    playerHand: localSeat === 0 ? hand0 : hand1,
+    opponentHand: localSeat === 0 ? hand1 : hand0,
+    table,
+    deck,
+  }
+}
+
 export interface Deal {
   playerHand: Card[]
   opponentHand: Card[]

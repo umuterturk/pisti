@@ -1,9 +1,10 @@
-import { memo, useState, useEffect, type RefObject } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { HudTimerRing, useTurnTimer } from '../app/TurnTimer'
 import { RollingScore } from './RollingScore'
 
-const EMOJIS = ['🙄', '😂', '😮', '🤓', '😒']
-const EMOJI_COOLDOWN_MS = 10000 // 10 seconds
+const EMOJIS = ['🙄', '😂', '😮', '🤓', '😒'] as const
+const EMOJI_COOLDOWN_MS = 5_000
+const EMOJI_PICK_MS = 3_000
 
 interface HudProps {
   name: string
@@ -11,7 +12,7 @@ interface HudProps {
   cards: number
   active: boolean
   side: 'top' | 'bottom'
-  /** Shows a "thinking…" hint while this side is deciding on its move. */
+  /** Shows a "thinking…" hint while this side is deciding on a move. */
   thinking?: boolean
   /** Attached to the score value so flying score popups know where to land. */
   scoreRef?: RefObject<HTMLSpanElement | null>
@@ -21,9 +22,9 @@ interface HudProps {
   turnDeadline?: number
   /** Fired once when this side's timer hits zero. */
   onTurnExpire?: () => void
-  /** Multiplayer mode: show emoji buttons instead of timer */
+  /** Multiplayer mode: show the reaction picker above the score badge. */
   isMultiplayer?: boolean
-  /** Callback when user clicks an emoji */
+  /** Callback when user picks an emoji. */
   onEmojiClick?: (emoji: string) => void
 }
 
@@ -45,46 +46,85 @@ function HudComponent({
   const timer = useTurnTimer(turnDeadline, onTurnExpire)
   const urgencyClass = timer.urgency ? ` hud__badge--timer hud__badge--${timer.urgency}` : ''
 
-  const showEmojis = isMultiplayer && side === 'bottom'
+  const showReact = isMultiplayer && side === 'bottom'
 
-  // Track last sent time for each emoji
-  const [emojiCooldowns, setEmojiCooldowns] = useState<Record<string, number>>({})
+  const [open, setOpen] = useState(false)
+  const [lastEmoji, setLastEmoji] = useState<string>(EMOJIS[0])
+  const [cooldownUntil, setCooldownUntil] = useState(0)
+  const [pickLeftMs, setPickLeftMs] = useState(EMOJI_PICK_MS)
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  const pickStartedAtRef = useRef(0)
+  const closingRef = useRef(false)
 
-  // Update cooldowns every second
+  const onCooldown = nowTick < cooldownUntil
+  const cooldownLeft = Math.max(0, cooldownUntil - nowTick)
+
+  // Tick while open (pick countdown) or cooling down (UI refresh).
   useEffect(() => {
-    if (!showEmojis) return
-    const interval = setInterval(() => {
-      setEmojiCooldowns((prev) => {
-        const now = Date.now()
-        const updated = { ...prev }
-        let changed = false
-        for (const [emoji, timestamp] of Object.entries(updated)) {
-          if (now - timestamp >= EMOJI_COOLDOWN_MS) {
-            delete updated[emoji]
-            changed = true
-          }
-        }
-        return changed ? updated : prev
-      })
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [showEmojis])
+    if (!showReact) return
+    if (!open && cooldownUntil <= Date.now()) return
+    const id = window.setInterval(() => setNowTick(Date.now()), 50)
+    return () => window.clearInterval(id)
+  }, [showReact, open, cooldownUntil])
 
-  const handleEmojiClick = (emoji: string) => {
-    const now = Date.now()
-    const lastSent = emojiCooldowns[emoji] ?? 0
-    if (now - lastSent < EMOJI_COOLDOWN_MS) return
+  const closePicker = useCallback(() => {
+    if (closingRef.current) return
+    closingRef.current = true
+    setOpen(false)
+    setPickLeftMs(EMOJI_PICK_MS)
+    window.setTimeout(() => {
+      closingRef.current = false
+    }, 280)
+  }, [])
 
-    setEmojiCooldowns((prev) => ({ ...prev, [emoji]: now }))
-    onEmojiClick?.(emoji)
-  }
+  // Auto-close after the pick window.
+  useEffect(() => {
+    if (!open) return
+    pickStartedAtRef.current = Date.now()
+    setPickLeftMs(EMOJI_PICK_MS)
 
-  const getEmojiCooldown = (emoji: string): number => {
-    const lastSent = emojiCooldowns[emoji]
-    if (!lastSent) return 0
-    const elapsed = Date.now() - lastSent
-    return Math.max(0, EMOJI_COOLDOWN_MS - elapsed)
-  }
+    const tick = window.setInterval(() => {
+      const left = Math.max(0, EMOJI_PICK_MS - (Date.now() - pickStartedAtRef.current))
+      setPickLeftMs(left)
+    }, 40)
+
+    const done = window.setTimeout(() => {
+      closePicker()
+    }, EMOJI_PICK_MS)
+
+    return () => {
+      window.clearInterval(tick)
+      window.clearTimeout(done)
+    }
+  }, [open, closePicker])
+
+  const openPicker = useCallback(() => {
+    if (onCooldown || closingRef.current) return
+    setOpen(true)
+  }, [onCooldown])
+
+  const handleTrigger = useCallback(() => {
+    if (open) {
+      closePicker()
+      return
+    }
+    openPicker()
+  }, [open, closePicker, openPicker])
+
+  const handlePick = useCallback(
+    (emoji: string) => {
+      if (!open || onCooldown) return
+      setLastEmoji(emoji)
+      setCooldownUntil(Date.now() + EMOJI_COOLDOWN_MS)
+      setNowTick(Date.now())
+      onEmojiClick?.(emoji)
+      closePicker()
+    },
+    [open, onCooldown, onEmojiClick, closePicker],
+  )
+
+  const pickFraction = open ? pickLeftMs / EMOJI_PICK_MS : 0
+  const cooldownFraction = onCooldown ? 1 - cooldownLeft / EMOJI_COOLDOWN_MS : 1
 
   return (
     <div className={`hud hud--${side} ${active ? 'hud--active' : ''}`}>
@@ -92,7 +132,7 @@ function HudComponent({
         <div className="hud__avatar">{initial}</div>
         <div className="hud__name">
           {name}
-          {!showEmojis && thinking ? (
+          {thinking ? (
             <span className="hud__thinking">
               Düşünüyor
               <span className="hud__thinking-dots">
@@ -102,36 +142,63 @@ function HudComponent({
               </span>
             </span>
           ) : (
-            !showEmojis && active && <span className="hud__turn-dot" />
+            active && <span className="hud__turn-dot" />
           )}
         </div>
       </div>
-      {showEmojis && (
-        <div className="hud__emojis">
-          {EMOJIS.map((emoji) => {
-            const cooldown = getEmojiCooldown(emoji)
-            const onCooldown = cooldown > 0
-            const progress = onCooldown ? (EMOJI_COOLDOWN_MS - cooldown) / EMOJI_COOLDOWN_MS : 1
-            return (
+
+      {showReact && (
+        <div
+          className={`hud__react${open ? ' hud__react--open' : ''}${
+            onCooldown ? ' hud__react--cooldown' : ''
+          }`}
+        >
+          <div className="hud__react-rail" aria-hidden={!open}>
+            {EMOJIS.map((emoji, i) => (
               <button
                 key={emoji}
                 type="button"
-                className={`hud__emoji-btn ${onCooldown ? 'hud__emoji-btn--cooldown' : ''}`}
-                onClick={() => handleEmojiClick(emoji)}
-                disabled={onCooldown}
-                aria-label={onCooldown ? `Wait ${Math.ceil(cooldown / 1000)}s` : `Send ${emoji}`}
-                title={onCooldown ? `${Math.ceil(cooldown / 1000)}s` : ''}
-                style={{
-                  '--cooldown-progress': progress,
-                } as React.CSSProperties}
+                className="hud__react-option"
+                style={{ '--react-i': EMOJIS.length - 1 - i } as CSSProperties}
+                tabIndex={open ? 0 : -1}
+                disabled={!open}
+                onClick={() => handlePick(emoji)}
+                aria-label={`Send ${emoji}`}
               >
-                <span className="hud__emoji-btn-icon">{emoji}</span>
-                {onCooldown && <div className="hud__emoji-btn-fill" />}
+                <span>{emoji}</span>
               </button>
-            )
-          })}
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="hud__react-trigger"
+            onClick={handleTrigger}
+            disabled={onCooldown && !open}
+            aria-expanded={open}
+            aria-label={
+              onCooldown
+                ? `Wait ${Math.ceil(cooldownLeft / 1000)}s`
+                : open
+                  ? 'Close reactions'
+                  : 'Send a reaction'
+            }
+            style={
+              {
+                '--pick-fraction': pickFraction,
+                '--cooldown-fraction': cooldownFraction,
+              } as CSSProperties
+            }
+          >
+            <span className="hud__react-trigger-emoji" aria-hidden>
+              {lastEmoji}
+            </span>
+            {open && <span className="hud__react-pick-ring" aria-hidden />}
+            {onCooldown && !open && <span className="hud__react-cool-fill" aria-hidden />}
+          </button>
         </div>
       )}
+
       <button
         type="button"
         className={`hud__badge${urgencyClass}`}

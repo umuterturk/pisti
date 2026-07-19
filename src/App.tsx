@@ -1248,7 +1248,12 @@ export default function App() {
   )
 
   const handleStart = useCallback(
-    (botId: string) => { resetTransient(); chooseBot(botId); setStarted(true); setContinueParam(); pushSoloGameUrl() },
+    (botId: string) => {
+      // A previous resign/leave (solo Çekil or MP exit) leaves this true, and it
+      // blocks every card throw — the "frozen solo game" bug.
+      leavingRef.current = false
+      resetTransient(); chooseBot(botId); setStarted(true); setContinueParam(); pushSoloGameUrl()
+    },
     [resetTransient, chooseBot],
   )
 

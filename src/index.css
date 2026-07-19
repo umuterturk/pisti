@@ -27,7 +27,19 @@ body {
   /* Letterbox around the phone frame on wide / landscape viewports. */
   background: #050f0a;
   color: #f5f0e6;
+  /* All engines: unprefixed covers Chrome/Firefox/Edge; Safari (and every iOS
+     browser) needs the -webkit- prefix. The callout rule additionally kills
+     the iOS long-press magnifier/menu on cards. */
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Text fields must stay selectable/editable despite the global lockdown. */
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 #root {

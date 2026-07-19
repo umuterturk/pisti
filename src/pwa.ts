@@ -6,17 +6,21 @@ import { registerSW } from 'virtual:pwa-register'
 // value even while version.json on the server reports the new one.
 declare const __APP_BUILD_ID__: string
 
-// How often to ask the browser to look for a newer deployed version.
-const UPDATE_INTERVAL_MS = 30_000
+// Minimum time between update checks — however many times checkForNewVersion()
+// is called (landing on the main menu, switching its Home/Friends tab, the
+// tab/PWA regaining focus/visibility, ...) within this window, only the first
+// one actually hits the network.
+const CHECK_COOLDOWN_MS = 60_000
 
 // How long to wait for the graceful SW handoff (skipWaiting → controllerchange
 // → reload) before assuming it's stuck and forcing a hard reload instead.
 const GRACEFUL_RELOAD_TIMEOUT_MS = 4_000
 
 // The service worker runs in `prompt` mode: a freshly deployed version installs
-// in the background and then WAITS. We poll aggressively (interval + focus) so
-// the wait state is reached within a minute of a deploy, and the app applies it
-// at a safe moment — on the main menu — via applyUpdate(), which activates the
+// in the background and then WAITS. checkForNewVersion() is called from the
+// UI whenever the player re-engages the main menu (see StartScreen.tsx) or the
+// tab/PWA regains focus/visibility (below), and the app applies the update at
+// a safe moment — on the main menu — via applyUpdate(), which activates the
 // waiting worker and reloads onto the new version. Never mid-hand.
 //
 // The SW's own update check is not trustworthy on every browser (WebKit —
@@ -31,6 +35,8 @@ type UpdateListener = (ready: boolean) => void
 
 let updateReady = false
 let applyFn: ((reloadPage?: boolean) => Promise<void>) | null = null
+let registration: ServiceWorkerRegistration | undefined
+let lastCheckAt = 0
 const listeners = new Set<UpdateListener>()
 
 /** Subscribe to "a new version is installed and waiting". Fires immediately
@@ -89,9 +95,19 @@ function checkVersionFile() {
     })
 }
 
-export function setupPwa() {
-  let registration: ServiceWorkerRegistration | undefined
+/** Ask the browser + server whether a newer build exists. Call this whenever
+ *  the player lands on or re-engages the main menu — a no-op if it was
+ *  already called within the last CHECK_COOLDOWN_MS. */
+export function checkForNewVersion(): void {
+  const now = Date.now()
+  if (now - lastCheckAt < CHECK_COOLDOWN_MS) return
+  lastCheckAt = now
+  // Ignore transient failures (e.g. offline); the next trigger will retry.
+  registration?.update().catch(() => {})
+  checkVersionFile()
+}
 
+export function setupPwa() {
   applyFn = registerSW({
     immediate: true,
     onNeedRefresh() {
@@ -103,22 +119,15 @@ export function setupPwa() {
     },
   })
 
-  // Independent of whether the SW registration above succeeds — some
-  // browsers/modes (private browsing, SW disabled, a stalled WebKit
-  // registration) never call onRegisteredSW at all, and we still need to
-  // detect new deploys for them via plain HTTP.
-  const checkForUpdate = () => {
-    // Ignore transient failures (e.g. offline); we'll retry on the next tick.
-    registration?.update().catch(() => {})
-    checkVersionFile()
-  }
+  // Covers the very first "landing" on the main menu at app boot, before
+  // StartScreen has even mounted.
+  checkForNewVersion()
 
-  checkForUpdate()
-  setInterval(checkForUpdate, UPDATE_INTERVAL_MS)
-
-  // Re-check the moment the user comes back to the game.
+  // Also covers the tab/PWA already being open and the player just coming
+  // back to it (switching apps, waking the phone, ...) without triggering
+  // any in-app navigation. Cheap: checkForNewVersion() no-ops under cooldown.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkForUpdate()
+    if (document.visibilityState === 'visible') checkForNewVersion()
   })
-  window.addEventListener('focus', checkForUpdate)
+  window.addEventListener('focus', checkForNewVersion)
 }

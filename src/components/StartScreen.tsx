@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { getLifetimeStats } from '../game/lifetimeStats'
 import type { RefreshFriendsOpts } from '../app/useFriends'
 import type { FriendEntry, PlayerEntry } from '../ports'
+import { checkForNewVersion } from '../pwa'
 import { Card } from './Card'
 import { FriendsPage } from './FriendsPage'
 import { NewGameDialog } from './NewGameDialog'
@@ -81,6 +82,14 @@ export function StartScreen({
     if (!open || activePage !== 'friends') return
     void onRefreshFriends({ silent: true, maxAgeMs: FRIENDS_TAB_STALE_MS })
   }, [open, activePage, onRefreshFriends])
+
+  // Check for a new deployed version whenever the player lands on the main
+  // menu or switches its Home/Friends tab — see src/pwa.ts for the cooldown
+  // and the rest of the update pipeline.
+  useEffect(() => {
+    if (!open) return
+    checkForNewVersion()
+  }, [open, activePage])
 
   const winRate =
     stats.handsPlayed > 0 ? Math.round((stats.handsWon / stats.handsPlayed) * 100) : null

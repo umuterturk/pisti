@@ -13,6 +13,7 @@ interface GameOverProps {
   playerCards: Card[]
   opponentCards: Card[]
   onNewGame: () => void
+  onLeave: () => void
 }
 
 const listVariants = {
@@ -152,6 +153,7 @@ export function GameOver({
   playerCards,
   opponentCards,
   onNewGame,
+  onLeave,
 }: GameOverProps) {
   const result =
     scoreboard.winner === 'tie'
@@ -230,16 +232,23 @@ export function GameOver({
           />
         </div>
 
-        <motion.button
-          className="game-over__btn"
-          onClick={onNewGame}
+        <motion.div
+          className="game-over__actions"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8 }}
-          whileTap={{ scale: 0.97 }}
         >
-          Sonraki El
-        </motion.button>
+          <motion.button
+            className="game-over__btn"
+            onClick={onNewGame}
+            whileTap={{ scale: 0.97 }}
+          >
+            Sonraki El
+          </motion.button>
+          <button type="button" className="game-over__leave" onClick={onLeave}>
+            Masadan kalk
+          </button>
+        </motion.div>
       </motion.div>
     </motion.div>
   )

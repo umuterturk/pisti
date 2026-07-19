@@ -1192,6 +1192,15 @@ export default function App() {
     nextGame()
   }, [resetTransient, nextGame])
 
+  /** Leave after a finished solo hand — result already recorded; do not forfeit. */
+  const handleSoloLeave = useCallback(() => {
+    resetTransient()
+    setStarted(false)
+    clearGame()
+    clearContinueParam()
+    clearGameUrl()
+  }, [resetTransient])
+
   // ── Resign / leave ─────────────────────────────────────────────────────────
   const recordForfeitLoss = useCallback(() => {
     if (
@@ -1660,6 +1669,7 @@ export default function App() {
           playerCards={state.playerCollected}
           opponentCards={state.opponentCollected}
           onNewGame={handleNextGame}
+          onLeave={handleSoloLeave}
         />
       )}
 

@@ -2,8 +2,8 @@ import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, typ
 import { HudTimerRing, useTurnTimer } from '../app/TurnTimer'
 import { RollingScore } from './RollingScore'
 
-const EMOJIS = ['🙄', '😂', '😮', '🤓', '😒'] as const
-const EMOJI_COOLDOWN_MS = 5_000
+const EMOJIS = ['😭', '😂', '🫨', '🤓', '😒', '🫣'] as const
+const EMOJI_COOLDOWN_MS = 3_000
 const EMOJI_PICK_MS = 3_000
 
 interface HudProps {

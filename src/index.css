@@ -490,8 +490,8 @@ body {
 .hud__react--cooldown .hud__react-trigger {
   animation: none;
   cursor: not-allowed;
-  border-color: rgba(255, 255, 255, 0.2);
-  opacity: 0.85;
+  border-color: rgba(255, 90, 90, 0.55);
+  opacity: 0.9;
 }
 
 .hud__react-trigger-emoji {
@@ -523,14 +523,14 @@ body {
   pointer-events: none;
 }
 
-/* Post-send cooldown fill rising from the bottom. */
+/* Post-send cooldown fill rising from the bottom — red so it reads as “locked”. */
 .hud__react-cool-fill {
   position: absolute;
   inset: 0;
   background: linear-gradient(
     to top,
-    rgba(255, 213, 79, 0.55),
-    rgba(255, 213, 79, 0.18)
+    rgba(220, 50, 50, 0.75),
+    rgba(180, 30, 30, 0.35)
   );
   transform-origin: center bottom;
   transform: scaleY(var(--cooldown-fraction, 0));

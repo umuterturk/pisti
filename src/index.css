@@ -2585,9 +2585,10 @@ textarea {
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
 }
 .name-modal__icon {
-  font-size: 2.8rem;
   line-height: 1;
   margin-bottom: 4px;
+  display: flex;
+  justify-content: center;
 }
 .name-modal__title {
   font-size: 1.35rem;
@@ -2637,17 +2638,6 @@ textarea {
 }
 .name-modal__btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .name-modal__btn:not(:disabled):active { filter: brightness(0.88); }
-.name-modal__skip {
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.4);
-  font-family: inherit;
-  font-size: 0.82rem;
-  cursor: pointer;
-  padding: 4px;
-  text-align: center;
-}
-.name-modal__skip:hover { color: rgba(255, 255, 255, 0.65); }
 
 /* ── Friend match overlay ───────────────────────────────────────────────── */
 .friend-overlay__backdrop {

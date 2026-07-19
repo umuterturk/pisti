@@ -1,17 +1,23 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Card } from '../components/Card'
+
+const ICON_CARD = { id: 'name-icon', suit: 'hearts' as const, rank: 'A' as const }
 
 interface Props {
   open: boolean
-  /** If true a "skip" button is shown so the user can dismiss without entering a name */
-  skippable?: boolean
+  /** Prefills the input when opening to edit an existing name */
+  initialName?: string
   onSave: (name: string) => void
-  onSkip?: () => void
 }
 
-export function NamePromptModal({ open, skippable, onSave, onSkip }: Props) {
-  const [draft, setDraft] = useState('')
+export function NamePromptModal({ open, initialName = '', onSave }: Props) {
+  const [draft, setDraft] = useState(initialName)
   const trimmed = draft.trim()
+
+  useEffect(() => {
+    if (open) setDraft(initialName)
+  }, [open, initialName])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -35,9 +41,11 @@ export function NamePromptModal({ open, skippable, onSave, onSkip }: Props) {
             exit={{ scale: 0.92, y: 16, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 320, damping: 26 }}
           >
-            <div className="name-modal__icon" aria-hidden="true">🂡</div>
+            <div className="name-modal__icon" aria-hidden="true">
+              <Card card={ICON_CARD} width={44} height={62} />
+            </div>
             <h2 className="name-modal__title">Adın nedir?</h2>
-            <p className="name-modal__sub">Rakiplerine göründüğü ad</p>
+            <p className="name-modal__sub">Masada seni böyle tanıyacaklar</p>
             <form className="name-modal__form" onSubmit={handleSubmit}>
               <input
                 className="name-modal__input"
@@ -52,13 +60,8 @@ export function NamePromptModal({ open, skippable, onSave, onSkip }: Props) {
                 spellCheck={false}
               />
               <button type="submit" className="name-modal__btn" disabled={!trimmed}>
-                Oynamaya Başla
+                Tamam
               </button>
-              {skippable && onSkip && (
-                <button type="button" className="name-modal__skip" onClick={onSkip}>
-                  Şimdi değil
-                </button>
-              )}
             </form>
           </motion.div>
         </motion.div>

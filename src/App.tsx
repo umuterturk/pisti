@@ -199,10 +199,6 @@ export default function App() {
     setEditingName(false)
   }, [saveUsername])
 
-  const handleSkipName = useCallback(() => {
-    setShowNamePrompt(false)
-  }, [])
-
   useEffect(() => {
     if (username) {
       mpAdapter.setDisplayName(username)
@@ -301,8 +297,8 @@ export default function App() {
   }, [])
 
   // Runs the deferred join once the profile is loaded AND a name exists.
-  // While the name is missing, the non-skippable NamePromptModal gates this
-  // effect — saving the name updates `username`, which re-fires it.
+  // While the name is missing, NamePromptModal gates this effect — saving the
+  // name updates `username`, which re-fires it.
   // Strict Mode mounts effects twice in dev — module Set survives remount.
   useEffect(() => {
     if (!pendingJoinCode || !profileLoaded) return
@@ -1750,9 +1746,8 @@ export default function App() {
 
       <NamePromptModal
         open={showNamePrompt || editingName}
-        skippable={showNamePrompt && !editingName && !pendingJoinCode}
+        initialName={editingName ? username : ''}
         onSave={handleSaveName}
-        onSkip={handleSkipName}
       />
     </div>
   )

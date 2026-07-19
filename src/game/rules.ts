@@ -96,7 +96,7 @@ export function scoreBreakdown(
       points: pistiCount * PISTI_BONUS,
     })
   }
-  if (twoClubs) items.push({ kind: 'twoClubs', label: '2 (Kulüp)', points: cardPoints(twoClubs) })
+  if (twoClubs) items.push({ kind: 'twoClubs', label: '2 (Sinek)', points: cardPoints(twoClubs) })
   if (tenDiamonds) {
     items.push({ kind: 'tenDiamonds', label: '10 (Karo)', points: cardPoints(tenDiamonds) })
   }

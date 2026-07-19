@@ -113,13 +113,13 @@ export function StartScreen({
               <div className="home-hub">
                 <div className="home-hub__cards" aria-hidden="true">
                   <Card
-                    card={{ id: 'home-1', suit: 'clubs', rank: 'A' }}
+                    card={{ id: 'home-1', suit: 'clubs', rank: '2' }}
                     className="home-hub__card home-hub__card--1"
                     width={72}
                     height={100}
                   />
                   <Card
-                    card={{ id: 'home-2', suit: 'hearts', rank: '7' }}
+                    card={{ id: 'home-2', suit: 'diamonds', rank: '10' }}
                     className="home-hub__card home-hub__card--2"
                     width={72}
                     height={100}

@@ -276,12 +276,30 @@ export default function App() {
   mpStateRef.current = mpState
 
   // ── Deep link join ───────────────────────────────────────────────────────
-  // Strict Mode mounts effects twice in dev — module Set survives remount.
+  // The join itself is deferred: a first-time player must enter their name
+  // BEFORE we touch the room, otherwise the match starts (and the name is
+  // written to Firestore) with a fallback "Oyuncu XXXX".
+  const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(null)
+
   useEffect(() => {
     const code = getJoinCodeFromUrl()?.trim().toUpperCase()
     if (!code) return
+    setPendingJoinCode(code)
+    setStarted(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Runs the deferred join once the profile is loaded AND a name exists.
+  // While the name is missing, the non-skippable NamePromptModal gates this
+  // effect — saving the name updates `username`, which re-fires it.
+  // Strict Mode mounts effects twice in dev — module Set survives remount.
+  useEffect(() => {
+    if (!pendingJoinCode || !profileLoaded) return
+    if (!username.trim()) return
+    const code = pendingJoinCode
     if (joinBootstrapCodes.has(code)) return
     joinBootstrapCodes.add(code)
+    setPendingJoinCode(null)
 
     const session = storage.loadSession()
     // Only rejoin a saved match when the URL points at THAT same room.
@@ -313,9 +331,8 @@ export default function App() {
         setMpHydrated(true)
       })
     }
-    setStarted(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [pendingJoinCode, profileLoaded, username])
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [resignOpen, setResignOpen] = useState(false)
@@ -468,6 +485,10 @@ export default function App() {
       const params = new URLSearchParams(window.location.search)
       const isHomePage = !params.has('play') && !params.has('join')
       if (isHomePage && started) {
+        // Cancel a join still gated behind the name prompt — without this,
+        // saving a name later would join the abandoned room.
+        setPendingJoinCode(null)
+        setMpHydrated(true)
         resetTransient()
         if (isMpMode) {
           leavingRef.current = true
@@ -1487,7 +1508,7 @@ export default function App() {
         shaking === 'hard' ? ' game-shell--shake-hard' : shaking === 'soft' ? ' game-shell--shake' : ''
       }`}
     >
-      {!mpHydrated && (
+      {!mpHydrated && !showNamePrompt && (
         <div className="mp-loading" aria-live="polite">
           <div className="mp-loading__spinner" />
           <p>Maç yükleniyor…</p>
@@ -1693,7 +1714,7 @@ export default function App() {
 
       <NamePromptModal
         open={showNamePrompt || editingName}
-        skippable={showNamePrompt && !editingName}
+        skippable={showNamePrompt && !editingName && !pendingJoinCode}
         onSave={handleSaveName}
         onSkip={handleSkipName}
       />

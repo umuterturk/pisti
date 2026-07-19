@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { track } from '../analytics'
 import { BOTS } from '../game/bots/registry'
 
 interface NewGameDialogProps {
@@ -38,7 +39,14 @@ export function NewGameDialog({ open, defaultBotId, onStart, onClose }: NewGameD
                 <button
                   key={bot.id}
                   className={`picker__item${bot.id === selected ? ' picker__item--active' : ''}`}
-                  onClick={() => setSelected(bot.id)}
+                  onClick={() => {
+                    setSelected(bot.id)
+                    track('bot_select', {
+                      bot_id: bot.id,
+                      difficulty: bot.difficulty,
+                      source: 'home',
+                    })
+                  }}
                 >
                   <span className="picker__name">{bot.name}</span>
                   <span className="picker__diff">{bot.difficulty}</span>

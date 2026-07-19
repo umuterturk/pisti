@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { track } from '../analytics'
 import { BOTS } from '../game/bots/registry'
 
 interface OpponentPickerProps {
@@ -34,7 +35,14 @@ export function OpponentPicker({ open, activeBotId, onSelect, onClose }: Opponen
                 <button
                   key={bot.id}
                   className={`picker__item${bot.id === activeBotId ? ' picker__item--active' : ''}`}
-                  onClick={() => onSelect(bot.id)}
+                  onClick={() => {
+                    track('bot_select', {
+                      bot_id: bot.id,
+                      difficulty: bot.difficulty,
+                      source: 'in_game',
+                    })
+                    onSelect(bot.id)
+                  }}
                 >
                   <span className="picker__name">{bot.name}</span>
                   <span className="picker__diff">{bot.difficulty}</span>

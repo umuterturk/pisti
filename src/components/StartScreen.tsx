@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { track } from '../analytics'
 import { getLifetimeStats } from '../game/lifetimeStats'
 import type { RefreshFriendsOpts } from '../app/useFriends'
 import type { FriendEntry, PlayerEntry } from '../ports'
@@ -76,6 +77,18 @@ export function StartScreen({
       setStats(getLifetimeStats())
       setActivePage('home')
     }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const next = getLifetimeStats()
+    setStats(next)
+    const winRate =
+      next.handsPlayed > 0 ? Math.round((next.handsWon / next.handsPlayed) * 100) : null
+    track('home_view', {
+      hands_played: next.handsPlayed,
+      win_rate: winRate ?? -1,
+    })
   }, [open])
 
   useEffect(() => {
@@ -175,7 +188,11 @@ export function StartScreen({
                   <button
                     type="button"
                     className="home-play-btn home-play-btn--solo"
-                    onClick={() => setPickerOpen(true)}
+                    onClick={() => {
+                      track('play_cta_click', { cta: 'solo', source: 'home' })
+                      track('bot_picker_open', { default_bot_id: defaultBotId, source: 'home' })
+                      setPickerOpen(true)
+                    }}
                   >
                     <span className="home-play-btn__shine" aria-hidden="true" />
                     <span className="home-play-btn__text">Yapay Zekayla Oyna</span>
@@ -185,7 +202,10 @@ export function StartScreen({
                   <button
                     type="button"
                     className="home-play-btn home-play-btn--friend"
-                    onClick={onPlayWithFriend}
+                    onClick={() => {
+                      track('play_cta_click', { cta: 'friend', source: 'home' })
+                      onPlayWithFriend()
+                    }}
                   >
                     <span className="home-play-btn__shine" aria-hidden="true" />
                     <span className="home-play-btn__text">Arkadaşınla Oyna</span>
@@ -213,7 +233,10 @@ export function StartScreen({
               type="button"
               className={`home-nav__item ${activePage === 'home' ? 'home-nav__item--active' : ''}`}
               aria-current={activePage === 'home' ? 'page' : undefined}
-              onClick={() => setActivePage('home')}
+              onClick={() => {
+                if (activePage !== 'home') track('nav_tab_click', { tab: 'home' })
+                setActivePage('home')
+              }}
             >
               <NavIconHome />
               <span className="home-nav__label">Ana Sayfa</span>
@@ -222,7 +245,10 @@ export function StartScreen({
               type="button"
               className={`home-nav__item ${activePage === 'friends' ? 'home-nav__item--active' : ''}`}
               aria-current={activePage === 'friends' ? 'page' : undefined}
-              onClick={() => setActivePage('friends')}
+              onClick={() => {
+                if (activePage !== 'friends') track('nav_tab_click', { tab: 'friends' })
+                setActivePage('friends')
+              }}
             >
               <NavIconFriends />
               <span className="home-nav__label">Arkadaşlar</span>
@@ -236,7 +262,10 @@ export function StartScreen({
               setPickerOpen(false)
               onStart(botId)
             }}
-            onClose={() => setPickerOpen(false)}
+            onClose={() => {
+              track('bot_picker_cancel', { source: 'home' })
+              setPickerOpen(false)
+            }}
           />
         </motion.div>
       )}

@@ -59,6 +59,26 @@ import { FirebaseFriendsAdapter } from './adapters/FirebaseFriendsAdapter'
 import { LocalStorageAdapter } from './adapters/LocalStorageAdapter'
 import { ensureAnonymousAuth } from './firebase/config'
 import { publishMoveWithRetry } from './multiplayer/moveSync'
+import {
+  clearLocalRematchPending,
+  getHandDurationSec,
+  getHandsInSession,
+  getPlayMode,
+  getRematchWaitSec,
+  isLocalRematchPending,
+  noteChallengeReceived,
+  noteEndScreenShown,
+  noteHandCompleted,
+  noteHandStarted,
+  noteLocalRematchRequest,
+  noteRematchOffer,
+  resetSessionHands,
+  setAnalyticsUserProperties,
+  setPlayMode,
+  takeEndScreenDecisionParams,
+  track,
+  winnerToResult,
+} from './analytics'
 
 const storage = new LocalStorageAdapter()
 const mpAdapter = new FirebaseMultiplayerAdapter()
@@ -192,12 +212,18 @@ export default function App() {
   }, [profileLoaded, username])
 
   const handleSaveName = useCallback((name: string) => {
+    const isFirst = !username.trim()
     void saveUsername(name)
     void friendsAdapter.syncProfile(name)
     mpAdapter.setDisplayName(name)
     setShowNamePrompt(false)
     setEditingName(false)
-  }, [saveUsername])
+    track('name_set', {
+      is_first: isFirst,
+      source: editingName ? 'profile' : 'prompt',
+    })
+    setAnalyticsUserProperties({ has_username: 'yes' })
+  }, [saveUsername, username, editingName])
 
   useEffect(() => {
     if (username) {
@@ -293,6 +319,8 @@ export default function App() {
     if (!code) return
     setPendingJoinCode(code)
     setStarted(true)
+    setPlayMode('mp_join')
+    track('invite_join_attempt', { has_code: true, source: 'deep_link' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -318,7 +346,9 @@ export default function App() {
 
     if (sameRoom) {
       log('Rejoining saved session', session.matchId, code)
+      track('session_resume', { mode: 'mp_join', source: 'saved_session' })
       void rejoinMatch(session.matchId)
+      track('invite_join_success', { mode: 'mp_join', source: 'rejoin' })
     } else {
       if (session) {
         log('URL invite differs from saved session — joining new room', {
@@ -330,13 +360,17 @@ export default function App() {
         log('Fresh join via URL code', code)
       }
       setMpOverlayPhase('joining')
-      void joinRoom(code).catch(() => {
-        // Allow a manual retry after failure (e.g. host not ready yet)
-        joinBootstrapCodes.delete(code)
-        // Keep overlay open so the joiner sees why join failed (e.g. host gone)
-        setMpOverlayPhase('error')
-        setMpHydrated(true)
-      })
+      void joinRoom(code).then(
+        () => track('invite_join_success', { mode: 'mp_join', source: 'deep_link' }),
+        () => {
+          // Allow a manual retry after failure (e.g. host not ready yet)
+          joinBootstrapCodes.delete(code)
+          // Keep overlay open so the joiner sees why join failed (e.g. host gone)
+          setMpOverlayPhase('error')
+          setMpHydrated(true)
+          track('invite_join_fail', { mode: 'mp_join', source: 'deep_link' })
+        },
+      )
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingJoinCode, profileLoaded, username])
@@ -370,6 +404,7 @@ export default function App() {
   // ── Emoji handler (MP mode only) ──────────────────────────────────────────
   const handleEmojiClick = useCallback(async (emoji: string) => {
     if (!isMpMode || mpState.phase !== 'playing') return
+    track('emoji_send', { emoji, mode: getPlayMode() })
     await mpAdapter.sendEmoji(emoji)
   }, [isMpMode, mpState.phase])
 
@@ -487,7 +522,30 @@ export default function App() {
     recordHandResult(state.scoreboard.winner === 'player')
     void friendsAdapter.syncLifetimeStats(getLifetimeStats())
     if (state.scoreboard.winner === 'player') vibrate(WIN)
-  }, [isMpMode, state.gameOver, state.scoreboard, state.gameNumber])
+
+    const bot = getBot(state.activeBotId)
+    const result = winnerToResult(state.scoreboard.winner)
+    const hands = noteHandCompleted()
+    track('game_complete', {
+      mode: 'solo',
+      bot_id: bot.id,
+      difficulty: bot.difficulty,
+      result,
+      ended_reason: 'completed',
+      player_score: state.scoreboard.player.total,
+      opponent_score: state.scoreboard.opponent.total,
+      score_margin: state.scoreboard.player.total - state.scoreboard.opponent.total,
+      pisti_count: state.scoreboard.player.pistiCount + state.scoreboard.player.doublePistiCount,
+      duration_s: getHandDurationSec(),
+      hands_in_session: hands,
+      match_games_player: state.games.player,
+      match_games_opponent: state.games.opponent,
+    })
+    setAnalyticsUserProperties({
+      last_bot_id: bot.id,
+      last_end_decision: 'pending',
+    })
+  }, [isMpMode, state.gameOver, state.scoreboard, state.gameNumber, state.activeBotId, state.games])
 
   useEffect(() => {
     if (isMpMode) return
@@ -602,11 +660,37 @@ export default function App() {
     setMpHydrated(true)
     setStarted(true)
 
+    const mode = getPlayMode()
+    noteHandStarted()
+    clearLocalRematchPending()
+    if (isFirstMatch) {
+      track('game_start', {
+        mode,
+        role: mpState.localSeat === 0 ? 'host' : 'guest',
+        is_continue: false,
+        hands_in_session: getHandsInSession(),
+      })
+    } else {
+      track('rematch_matched', {
+        mode,
+        hands_in_session: getHandsInSession(),
+        match_games_player: games.player,
+        match_games_opponent: games.opponent,
+      })
+      track('game_start', {
+        mode,
+        role: mpState.localSeat === 0 ? 'host' : 'guest',
+        is_continue: true,
+        hands_in_session: getHandsInSession(),
+      })
+    }
+
     // Add opponent as friend when match starts (first match only, not rematch)
     if (isFirstMatch && mpState.opponentUid && mpState.opponentName) {
       void friendsAdapter.isFriend(mpState.opponentUid).then((already) => {
         if (!already && mpState.opponentUid && mpState.opponentName) {
           void friendsAdapter.addFriend(mpState.opponentUid, mpState.opponentName).then(() => {
+            track('friend_add', { source: 'mp_auto' })
             void refreshFriends()
           })
         }
@@ -640,11 +724,29 @@ export default function App() {
       )
     }
     if (won) vibrate(WIN)
+
+    const result = winnerToResult(state.scoreboard.winner)
+    const hands = noteHandCompleted()
+    track('game_complete', {
+      mode: getPlayMode(),
+      result,
+      ended_reason: 'completed',
+      player_score: state.scoreboard.player.total,
+      opponent_score: state.scoreboard.opponent.total,
+      score_margin: state.scoreboard.player.total - state.scoreboard.opponent.total,
+      pisti_count: state.scoreboard.player.pistiCount + state.scoreboard.player.doublePistiCount,
+      duration_s: getHandDurationSec(),
+      hands_in_session: hands,
+      match_games_player: state.games.player,
+      match_games_opponent: state.games.opponent,
+    })
+    setAnalyticsUserProperties({ last_end_decision: 'pending' })
   }, [
     isMpMode,
     state.gameOver,
     state.scoreboard,
     state.gameNumber,
+    state.games,
     mpState.opponentUid,
     mpState.opponentName,
     mpState.matchId,
@@ -699,6 +801,29 @@ export default function App() {
           )
         }
         vibrate(WIN)
+        const endedReason =
+          mpState.endedReason === 'forfeit_heartbeat'
+            ? 'forfeit_heartbeat'
+            : mpState.opponentLeft
+              ? 'opponent_left'
+              : 'resign'
+        const hands = noteHandCompleted()
+        track('game_complete', {
+          mode: getPlayMode(),
+          result: 'win',
+          ended_reason: endedReason,
+          duration_s: getHandDurationSec(),
+          hands_in_session: hands,
+          match_games_player: state.games.player + 1,
+          match_games_opponent: state.games.opponent,
+        })
+        if (endedReason === 'resign' || mpState.opponentResigned) {
+          track('opponent_resign', { mode: getPlayMode() })
+        } else if (mpState.opponentLeft) {
+          track('opponent_left', { mode: getPlayMode() })
+        } else {
+          track('forfeit_heartbeat', { mode: getPlayMode(), side: 'opponent' })
+        }
       }
       setMpEndSynced(true)
       return
@@ -1084,6 +1209,11 @@ export default function App() {
 
     if (mpState.turnDeadline) autoPlayedDeadlineRef.current = mpState.turnDeadline
 
+    track('turn_timeout_autoplay', {
+      mode: getPlayMode(),
+      cards_in_hand: state.playerHand.length,
+    })
+
     const target = getPileTarget()
     const cardEl = document.querySelector<HTMLElement>(`[data-card-id="${card.id}"]`)
 
@@ -1188,12 +1318,32 @@ export default function App() {
 
   // ── Solo: next hand ────────────────────────────────────────────────────────
   const handleNextGame = useCallback(() => {
+    track('continue_click', takeEndScreenDecisionParams({
+      action: 'next_hand',
+      mode: 'solo',
+    }))
+    setAnalyticsUserProperties({ last_end_decision: 'continue' })
     resetTransient()
     nextGame()
-  }, [resetTransient, nextGame])
+    noteHandStarted()
+    const bot = getBot(state.activeBotId)
+    track('game_start', {
+      mode: 'solo',
+      bot_id: bot.id,
+      difficulty: bot.difficulty,
+      is_continue: true,
+      hands_in_session: getHandsInSession(),
+    })
+  }, [resetTransient, nextGame, state.activeBotId])
 
   /** Leave after a finished solo hand — result already recorded; do not forfeit. */
   const handleSoloLeave = useCallback(() => {
+    track('quit_click', takeEndScreenDecisionParams({
+      action: 'leave',
+      mode: 'solo',
+    }))
+    setAnalyticsUserProperties({ last_end_decision: 'quit' })
+    resetSessionHands()
     resetTransient()
     setStarted(false)
     clearGame()
@@ -1234,6 +1384,15 @@ export default function App() {
   const handleResignConfirm = useCallback(() => {
     setResignOpen(false)
     leavingRef.current = true
+    track('resign_confirm', {
+      mode: getPlayMode(),
+      turn: state.turn,
+      cards_in_hand: state.playerHand.length,
+      pile_size: state.pile.length,
+      deck_left: state.deck.length,
+      hands_in_session: getHandsInSession(),
+    })
+    setAnalyticsUserProperties({ last_end_decision: 'resign' })
     resetTransient()
     if (isMpMode) {
       // Record H2H loss before leave so score updates even if winner is slow
@@ -1251,16 +1410,42 @@ export default function App() {
       setStarted(false)
       clearGameUrl()
       storage.clearSession()
+      resetSessionHands()
     } else {
+      track('game_leave', {
+        mode: 'solo',
+        bot_id: state.activeBotId,
+        cards_in_hand: state.playerHand.length,
+        deck_left: state.deck.length,
+        hands_in_session: getHandsInSession(),
+      })
       setStarted(false)
       clearGame()
       clearContinueParam()
+      resetSessionHands()
     }
-  }, [resetTransient, isMpMode, leave, clearPresence, recordForfeitLoss])
+  }, [
+    resetTransient,
+    isMpMode,
+    leave,
+    clearPresence,
+    recordForfeitLoss,
+    state.turn,
+    state.playerHand.length,
+    state.pile.length,
+    state.deck.length,
+    state.activeBotId,
+  ])
 
   /** Exit from the rejoin/loading screen — forfeit so the opponent sees the match end. */
   const handleLoadingExit = useCallback(() => {
     leavingRef.current = true
+    track('resign_confirm', {
+      mode: getPlayMode(),
+      source: 'loading_exit',
+      hands_in_session: getHandsInSession(),
+    })
+    setAnalyticsUserProperties({ last_end_decision: 'resign' })
     resetTransient()
     recordForfeitLoss()
     clearPresence()
@@ -1276,10 +1461,26 @@ export default function App() {
     setStarted(false)
     clearGameUrl()
     storage.clearSession()
+    resetSessionHands()
   }, [resetTransient, leave, clearPresence, recordForfeitLoss])
 
   const handleSelectBot = useCallback(
-    (botId: string) => { setPickerOpen(false); resetTransient(); chooseBot(botId) },
+    (botId: string) => {
+      setPickerOpen(false)
+      resetTransient()
+      chooseBot(botId)
+      noteHandStarted()
+      const bot = getBot(botId)
+      track('game_start', {
+        mode: 'solo',
+        bot_id: bot.id,
+        difficulty: bot.difficulty,
+        is_continue: false,
+        source: 'in_game_switch',
+        hands_in_session: getHandsInSession(),
+      })
+      setAnalyticsUserProperties({ last_bot_id: bot.id })
+    },
     [resetTransient, chooseBot],
   )
 
@@ -1288,7 +1489,23 @@ export default function App() {
       // A previous resign/leave (solo Çekil or MP exit) leaves this true, and it
       // blocks every card throw — the "frozen solo game" bug.
       leavingRef.current = false
-      resetTransient(); chooseBot(botId); setStarted(true); setContinueParam(); pushSoloGameUrl()
+      resetSessionHands()
+      setPlayMode('solo')
+      resetTransient()
+      chooseBot(botId)
+      setStarted(true)
+      setContinueParam()
+      pushSoloGameUrl()
+      noteHandStarted()
+      const bot = getBot(botId)
+      track('game_start', {
+        mode: 'solo',
+        bot_id: bot.id,
+        difficulty: bot.difficulty,
+        is_continue: false,
+        hands_in_session: 0,
+      })
+      setAnalyticsUserProperties({ last_bot_id: bot.id, preferred_mode: 'solo' })
     },
     [resetTransient, chooseBot],
   )
@@ -1301,6 +1518,8 @@ export default function App() {
       const autoName = `Oyuncu ${uid.slice(-4).toUpperCase()}`
       await saveUsername(autoName)
       mpAdapter.setDisplayName(autoName)
+      track('name_set', { is_first: true, source: 'auto' })
+      setAnalyticsUserProperties({ has_username: 'yes' })
     } catch {
       // Proceed anyway — adapter will fallback to uid-based name
     }
@@ -1330,6 +1549,8 @@ export default function App() {
   const handlePlayWithFriend = useCallback(async () => {
     await ensureMpUsername()
     await beginNewMatch()
+    resetSessionHands()
+    setPlayMode('mp_link')
     setInvitingUid(null)
     setChallengedName(null)
     outgoingRequestIdRef.current = null
@@ -1340,11 +1561,14 @@ export default function App() {
     const code = await createRoom()
     if (!code) {
       setMpOverlayPhase('error')
+      track('mp_room_create_fail', { mode: 'mp_link', source: 'home' })
       return
     }
+    track('mp_room_create', { mode: 'mp_link', source: 'home' })
     setMpOverlayPhase('sharing')
     setStarted(true)
     const shareResult = await shareInviteLink(code)
+    track('invite_share', { result: shareResult, source: 'home', mode: 'mp_link' })
     setInviteCopied(shareResult === 'copied')
     setMpOverlayPhase('waiting')
   }, [ensureMpUsername, beginNewMatch, createRoom])
@@ -1355,12 +1579,14 @@ export default function App() {
       try {
         await ensureMpUsername()
         await beginNewMatch()
+        resetSessionHands()
         setInviteCopied(false)
         clearGame()
         clearContinueParam()
 
         // Online → in-app challenge popup for them; offline → share link
         if (friend.online && !friend.inMatch) {
+          setPlayMode('mp_challenge')
           setChallengedName(friend.name)
           outgoingRequestIdRef.current = null
           setMpOverlayPhase('creating')
@@ -1369,13 +1595,16 @@ export default function App() {
           if (!code || !matchId) {
             setMpOverlayPhase('error')
             setChallengedName(null)
+            track('mp_room_create_fail', { mode: 'mp_challenge', source: 'friends' })
             return
           }
+          track('mp_room_create', { mode: 'mp_challenge', source: 'friends' })
           setStarted(true)
           try {
             const req = await sendChallenge(friend.uid, matchId, code)
             outgoingRequestIdRef.current = req.id
             setMpOverlayPhase('waiting')
+            track('challenge_send', { source: 'friends' })
           } catch {
             await leave()
             setMpOverlayPhase('error')
@@ -1385,17 +1614,21 @@ export default function App() {
           return
         }
 
+        setPlayMode('mp_link')
         setChallengedName(null)
         outgoingRequestIdRef.current = null
         setMpOverlayPhase('creating')
         const code = await createRoom()
         if (!code) {
           setMpOverlayPhase('error')
+          track('mp_room_create_fail', { mode: 'mp_link', source: 'friends' })
           return
         }
+        track('mp_room_create', { mode: 'mp_link', source: 'friends' })
         setMpOverlayPhase('sharing')
         setStarted(true)
         const shareResult = await shareInviteLink(code)
+        track('invite_share', { result: shareResult, source: 'friends', mode: 'mp_link' })
         setInviteCopied(shareResult === 'copied')
         setMpOverlayPhase('waiting')
       } finally {
@@ -1407,9 +1640,16 @@ export default function App() {
 
   const handleCancelMpOverlay = useCallback(async () => {
     leavingRef.current = true
+    track('mp_waiting_cancel', {
+      mode: getPlayMode(),
+      phase: mpOverlayPhase,
+    })
     const requestId = outgoingRequestIdRef.current
     outgoingRequestIdRef.current = null
-    if (requestId) void cancelOutgoingRequest(requestId)
+    if (requestId) {
+      void cancelOutgoingRequest(requestId)
+      track('challenge_expire', { side: 'sender', reason: 'cancel' })
+    }
     clearPresence()
     await leave()
     setMpOverlayPhase('idle')
@@ -1419,10 +1659,14 @@ export default function App() {
     setStarted(false)
     clearGameUrl()
     storage.clearSession()
-  }, [leave, cancelOutgoingRequest, clearPresence])
+    resetSessionHands()
+  }, [leave, cancelOutgoingRequest, clearPresence, mpOverlayPhase])
 
   const handleAcceptGameRequest = useCallback(
     async (request: GameRequest) => {
+      track('challenge_accept', { source: 'modal' })
+      setPlayMode('mp_challenge')
+      resetSessionHands()
       await beginNewMatch()
       setChallengedName(null)
       setInviteCopied(false)
@@ -1433,9 +1677,11 @@ export default function App() {
         clearGame()
         clearContinueParam()
         await joinRoom(request.inviteCode)
+        track('invite_join_success', { mode: 'mp_challenge', source: 'challenge' })
       } catch {
         setMpOverlayPhase('error')
         setMpHydrated(true)
+        track('invite_join_fail', { mode: 'mp_challenge', source: 'challenge' })
       }
     },
     [beginNewMatch, acceptRequest, joinRoom],
@@ -1443,16 +1689,45 @@ export default function App() {
 
   const handleDeclineGameRequest = useCallback(
     async (request: GameRequest) => {
+      track('challenge_decline', { source: 'modal' })
       await declineRequest(request.id)
     },
     [declineRequest],
   )
   // ── MP rematch / leave ────────────────────────────────────────────────────
   const handleMpRematch = useCallback(async () => {
+    track('continue_click', takeEndScreenDecisionParams({
+      action: 'rematch',
+      mode: getPlayMode(),
+      was_opponent_rematch_nudge: mpState.opponentWantsRematch,
+    }))
+    setAnalyticsUserProperties({ last_end_decision: 'continue' })
+    noteLocalRematchRequest()
+    track('mp_rematch_request', {
+      mode: getPlayMode(),
+      opponent_already_ready: mpState.opponentWantsRematch,
+    })
     await requestRematch()
-  }, [requestRematch])
+  }, [requestRematch, mpState.opponentWantsRematch])
 
   const handleMpLeave = useCallback(async () => {
+    if (isLocalRematchPending()) {
+      track('rematch_abandoned', {
+        who_left: 'self',
+        waited_s: getRematchWaitSec(),
+        mode: getPlayMode(),
+        ...takeEndScreenDecisionParams(),
+      })
+      clearLocalRematchPending()
+    } else if (mpState.phase === 'ended') {
+      track('quit_click', takeEndScreenDecisionParams({
+        action: 'leave',
+        mode: getPlayMode(),
+      }))
+      setAnalyticsUserProperties({ last_end_decision: 'quit' })
+    } else {
+      track('mp_leave', { mode: getPlayMode(), phase: mpState.phase })
+    }
     leavingRef.current = true
     resetTransient()
     const requestId = outgoingRequestIdRef.current
@@ -1470,11 +1745,18 @@ export default function App() {
     setStarted(false)
     clearGameUrl()
     storage.clearSession()
-  }, [resetTransient, leave, cancelOutgoingRequest, clearPresence])
+    resetSessionHands()
+  }, [resetTransient, leave, cancelOutgoingRequest, clearPresence, mpState.phase])
 
   // ── Score info ─────────────────────────────────────────────────────────────
-  const handleOpponentScoreClick = useCallback(() => setScoreInfoSide('opponent'), [])
-  const handlePlayerScoreClick = useCallback(() => setScoreInfoSide('player'), [])
+  const handleOpponentScoreClick = useCallback(() => {
+    track('score_info_open', { side: 'opponent', mode: getPlayMode() })
+    setScoreInfoSide('opponent')
+  }, [])
+  const handlePlayerScoreClick = useCallback(() => {
+    track('score_info_open', { side: 'player', mode: getPlayMode() })
+    setScoreInfoSide('player')
+  }, [])
 
   // ── Dev pişti demo ─────────────────────────────────────────────────────────
   const triggerPistiDemo = useCallback(
@@ -1531,6 +1813,106 @@ export default function App() {
 
   const showMpEnd = isMpMode && mpState.phase === 'ended' && mpEndSynced && !showCountdown
   const showSoloEnd = !isMpMode && state.gameOver && state.scoreboard !== null
+
+  // Solo continued from localStorage after refresh
+  useEffect(() => {
+    if (!continuedGame || isMpMode) return
+    setPlayMode('solo')
+    noteHandStarted()
+    track('session_resume', {
+      mode: 'solo',
+      source: 'continue',
+      bot_id: continuedGame.activeBotId,
+      game_number: continuedGame.gameNumber,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // End-screen funnel + rematch nudge
+  useEffect(() => {
+    if (showSoloEnd && state.scoreboard) {
+      const bot = getBot(state.activeBotId)
+      const result = winnerToResult(state.scoreboard.winner)
+      const key = `solo-${state.gameNumber}-${result}`
+      const ctx = {
+        mode: 'solo' as const,
+        result,
+        ended_reason: 'completed',
+        score_margin: state.scoreboard.player.total - state.scoreboard.opponent.total,
+        match_games_player: state.games.player,
+        match_games_opponent: state.games.opponent,
+        hands_in_session: getHandsInSession(),
+        bot_id: bot.id,
+        difficulty: bot.difficulty,
+      }
+      if (noteEndScreenShown(ctx, key)) {
+        track('end_screen_view', ctx)
+      }
+    }
+  }, [showSoloEnd, state.scoreboard, state.gameNumber, state.games, state.activeBotId])
+
+  useEffect(() => {
+    if (!showMpEnd || debugMpEnd) return
+    const result: 'win' | 'lose' | 'tie' =
+      mpState.opponentResigned || mpState.opponentLeft || mpState.endedReason === 'forfeit_heartbeat'
+        ? 'win'
+        : state.scoreboard
+          ? winnerToResult(state.scoreboard.winner)
+          : 'tie'
+    const endedReason = mpState.endedReason ?? 'completed'
+    const key = `mp-${mpState.matchId}-${mpState.round}-${endedReason}-${result}`
+    const ctx = {
+      mode: getPlayMode(),
+      result,
+      ended_reason: endedReason,
+      score_margin: state.scoreboard
+        ? state.scoreboard.player.total - state.scoreboard.opponent.total
+        : 0,
+      match_games_player: state.games.player,
+      match_games_opponent: state.games.opponent,
+      hands_in_session: getHandsInSession(),
+      was_opponent_rematch_nudge: mpState.opponentWantsRematch,
+    }
+    if (noteEndScreenShown(ctx, key)) {
+      track('end_screen_view', ctx)
+    }
+  }, [
+    showMpEnd,
+    debugMpEnd,
+    mpState.matchId,
+    mpState.round,
+    mpState.endedReason,
+    mpState.opponentResigned,
+    mpState.opponentLeft,
+    mpState.opponentWantsRematch,
+    state.scoreboard,
+    state.games,
+  ])
+
+  useEffect(() => {
+    if (!showMpEnd || debugMpEnd) return
+    if (!mpState.opponentWantsRematch || mpState.localWantsRematch) return
+    const key = `offer-${mpState.matchId}-${mpState.round}`
+    if (!noteRematchOffer(key)) return
+    track('rematch_offered_by_opponent', {
+      mode: getPlayMode(),
+      result: state.scoreboard ? winnerToResult(state.scoreboard.winner) : 'tie',
+    })
+  }, [
+    showMpEnd,
+    debugMpEnd,
+    mpState.opponentWantsRematch,
+    mpState.localWantsRematch,
+    mpState.matchId,
+    mpState.round,
+    state.scoreboard,
+  ])
+
+  useEffect(() => {
+    if (!incomingRequest) return
+    if (!noteChallengeReceived(incomingRequest.id)) return
+    track('challenge_receive', { source: 'modal' })
+  }, [incomingRequest])
 
   // Lobby / join overlay — only while actively in a lobby phase (never after leave/home)
   const showMpOverlay =
@@ -1624,11 +2006,33 @@ export default function App() {
         <div className="side-hud__label">El {state.gameNumber}</div>
         <div className="side-hud__label">Deste {state.deck.length}</div>
         {!isMpMode && (
-          <button className="side-hud__btn" onClick={() => setPickerOpen(true)} aria-label="Rakip seç">
+          <button
+            className="side-hud__btn"
+            onClick={() => {
+              track('bot_picker_open', {
+                default_bot_id: state.activeBotId,
+                source: 'in_game',
+              })
+              setPickerOpen(true)
+            }}
+            aria-label="Rakip seç"
+          >
             Rakip
           </button>
         )}
-        <button className="side-hud__btn" onClick={() => setResignOpen(true)} aria-label="Oyundan çık">
+        <button
+          className="side-hud__btn"
+          onClick={() => {
+            track('resign_prompt_open', {
+              mode: getPlayMode(),
+              turn: state.turn,
+              cards_in_hand: state.playerHand.length,
+              pile_size: state.pile.length,
+            })
+            setResignOpen(true)
+          }}
+          aria-label="Oyundan çık"
+        >
           Çekil
         </button>
         {import.meta.env.DEV && !isMpMode && (
@@ -1707,7 +2111,10 @@ export default function App() {
         open={pickerOpen}
         activeBotId={state.activeBotId}
         onSelect={handleSelectBot}
-        onClose={() => setPickerOpen(false)}
+        onClose={() => {
+          track('bot_picker_cancel', { source: 'in_game' })
+          setPickerOpen(false)
+        }}
       />
 
       <ConfirmDialog
@@ -1717,7 +2124,10 @@ export default function App() {
         confirmLabel="Çekil"
         cancelLabel="Vazgeç"
         onConfirm={handleResignConfirm}
-        onCancel={() => setResignOpen(false)}
+        onCancel={() => {
+          track('resign_cancel', { mode: getPlayMode() })
+          setResignOpen(false)
+        }}
       />
 
       <ScoreInfoDialog

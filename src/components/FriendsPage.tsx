@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { track } from '../analytics'
 import type { FriendEntry, PlayerEntry } from '../ports'
 
 const PULL_THRESHOLD_PX = 72
@@ -184,6 +185,7 @@ export function FriendsPage({
                           className="friends-row__confirm-yes"
                           onClick={() => {
                             setConfirmingUid(null)
+                            track('friend_remove', { source: 'friends' })
                             onRemoveFriend(friend.uid)
                           }}
                         >
@@ -203,7 +205,14 @@ export function FriendsPage({
                           type="button"
                           className="friends-row__invite"
                           disabled={inviting || invitingUid !== null || friend.inMatch}
-                          onClick={() => onInviteFriend(friend)}
+                          onClick={() => {
+                            track('friend_invite_click', {
+                              friend_online: friend.online,
+                              friend_in_match: friend.inMatch,
+                              source: 'friends',
+                            })
+                            onInviteFriend(friend)
+                          }}
                         >
                           {inviting
                             ? 'Davet…'
@@ -237,7 +246,10 @@ export function FriendsPage({
           <button
             type="button"
             className="friends-new-invite"
-            onClick={onPlayWithFriend}
+            onClick={() => {
+              track('play_cta_click', { cta: 'friend', source: 'friends' })
+              onPlayWithFriend()
+            }}
             disabled={invitingUid !== null}
           >
             + Yeni davet linki
@@ -279,6 +291,7 @@ export function FriendsPage({
                       setAddingUid(player.uid)
                       try {
                         await onAddFriend(player)
+                        track('friend_add', { source: 'friends' })
                       } finally {
                         setAddingUid(null)
                       }

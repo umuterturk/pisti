@@ -52,6 +52,8 @@ interface UserDoc {
   displayName?: string
   handsWon?: number
   handsPlayed?: number
+  multiplayerGamesPlayed?: number
+  multiplayerGamesWon?: number
   updatedAt?: unknown
   lastSeenAt?: TimestampType | number | null
   inMatch?: boolean
@@ -206,15 +208,29 @@ export class FirebaseFriendsAdapter implements FriendsPort {
 
   async syncLifetimeStats(stats: UserLifetimeStats): Promise<void> {
     const uid = await this.getUid()
-    await setDoc(
-      this.userRef(uid),
-      {
-        handsWon: stats.handsWon,
-        handsPlayed: stats.handsPlayed,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    )
+    const ref = this.userRef(uid)
+    // Never let a fresher/empty device wipe higher tallies from another session.
+    await runTransaction(getFirebaseDb(), async (tx) => {
+      const snap = await tx.get(ref)
+      const prev = snap.exists() ? (snap.data() as UserDoc) : null
+      tx.set(
+        ref,
+        {
+          handsWon: Math.max(prev?.handsWon ?? 0, stats.handsWon),
+          handsPlayed: Math.max(prev?.handsPlayed ?? 0, stats.handsPlayed),
+          multiplayerGamesPlayed: Math.max(
+            prev?.multiplayerGamesPlayed ?? 0,
+            stats.multiplayerGamesPlayed,
+          ),
+          multiplayerGamesWon: Math.max(
+            prev?.multiplayerGamesWon ?? 0,
+            stats.multiplayerGamesWon,
+          ),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+    })
   }
 
   async getUserStats(uid: string): Promise<UserLifetimeStats | null> {
@@ -225,6 +241,8 @@ export class FirebaseFriendsAdapter implements FriendsPort {
       return {
         handsWon: data.handsWon ?? 0,
         handsPlayed: data.handsPlayed ?? 0,
+        multiplayerGamesPlayed: data.multiplayerGamesPlayed ?? 0,
+        multiplayerGamesWon: data.multiplayerGamesWon ?? 0,
       }
     } catch {
       return null

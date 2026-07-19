@@ -51,6 +51,8 @@ export interface GameRequest {
 export interface UserLifetimeStats {
   handsWon: number
   handsPlayed: number
+  multiplayerGamesPlayed: number
+  multiplayerGamesWon: number
 }
 
 /** Head-to-head record against one opponent, from the local player's view. */

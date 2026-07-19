@@ -43,7 +43,7 @@ import {
   saveGame,
   setContinueParam,
 } from './game/gamePersistence'
-import { getLifetimeStats, recordHandResult } from './game/lifetimeStats'
+import { getLifetimeStats, recordHandResult, wasHandRecorded } from './game/lifetimeStats'
 import type { FriendEntry, GameRequest, RivalryStats } from './ports'
 import { useGame, hydrateGameState, blankMpWaitingState, type PlayResult, type Turn, type GameState } from './game/useGame'
 import {
@@ -297,6 +297,8 @@ export default function App() {
   const autoPlayedDeadlineRef = useRef(0)
   const mpStateRef = useRef(mpState)
   mpStateRef.current = mpState
+  /** Popstate / early effects call this; assigned when recordForfeitLoss is defined. */
+  const recordForfeitLossRef = useRef<() => void>(() => {})
 
   // Who led the current hand — recorded with each H2H result so the next match
   // between this pair can seat the right starter. Both clients compute this
@@ -484,7 +486,18 @@ export default function App() {
   const shakeTimerRef = useRef<number | null>(null)
   const scorePopTimerRef = useRef<number | null>(null)
   const pistiTriggerCountRef = useRef(0)
-  const recordedHandRef = useRef(continuedGame?.gameNumber ?? 0)
+  // Mid-hand continue must leave room to record this gameNumber; finished hands
+  // only skip when the durable result id was already persisted.
+  const recordedHandRef = useRef((() => {
+    if (!continuedGame) return 0
+    if (!continuedGame.gameOver || !continuedGame.scoreboard) {
+      return continuedGame.gameNumber - 1
+    }
+    const soloResultId = `solo-${continuedGame.gameNumber}-${continuedGame.scoreboard.player.total}-${continuedGame.scoreboard.opponent.total}-${continuedGame.games.player}-${continuedGame.games.opponent}`
+    return wasHandRecorded(soloResultId)
+      ? continuedGame.gameNumber
+      : continuedGame.gameNumber - 1
+  })())
 
   // Stable refs used inside callbacks to avoid stale closures
   const flyingRef = useRef(flying); flyingRef.current = flying
@@ -519,7 +532,13 @@ export default function App() {
     if (!state.gameOver || !state.scoreboard) return
     if (recordedHandRef.current === state.gameNumber) return
     recordedHandRef.current = state.gameNumber
-    recordHandResult(state.scoreboard.winner === 'player')
+    const soloResultId = `solo-${state.gameNumber}-${state.scoreboard.player.total}-${state.scoreboard.opponent.total}-${state.games.player}-${state.games.opponent}`
+    const { didRecord } = recordHandResult(
+      state.scoreboard.winner === 'player',
+      'solo',
+      soloResultId,
+    )
+    if (!didRecord) return
     void friendsAdapter.syncLifetimeStats(getLifetimeStats())
     if (state.scoreboard.winner === 'player') vibrate(WIN)
 
@@ -572,6 +591,11 @@ export default function App() {
         resetTransient()
         if (isMpMode) {
           leavingRef.current = true
+          const phase = mpStateRef.current.phase
+          // Mid-hand / countdown exit must count as a forfeit loss (Çekil does).
+          if (phase === 'playing' || phase === 'countdown') {
+            recordForfeitLossRef.current()
+          }
           clearPresence()
           void leave(true)
           prevSeedRef.current = null
@@ -654,9 +678,23 @@ export default function App() {
     resetTransient()
     resetToState(hydrated)
     appliedMovesRef.current = mpState.moves.length
-    // Only mark the hand recorded if it was already finished when we hydrated
-    // (rejoin after game over). An in-progress hand must still be recordable.
-    recordedHandRef.current = hydrated.gameOver ? hydrated.gameNumber : hydrated.gameNumber - 1
+    // Allow the record effect to run if this finished hand was never persisted
+    // locally (crash after end / before stats). Idempotent resultIds prevent
+    // double-counting when it was already recorded.
+    if (hydrated.gameOver) {
+      const completedId = mpState.matchId
+        ? `${mpState.matchId}_${hydrated.gameNumber}`
+        : null
+      const forfeitId = mpState.matchId
+        ? `${mpState.matchId}_${hydrated.gameNumber}_forfeit`
+        : null
+      const already =
+        (completedId != null && wasHandRecorded(completedId)) ||
+        (forfeitId != null && wasHandRecorded(forfeitId))
+      recordedHandRef.current = already ? hydrated.gameNumber : hydrated.gameNumber - 1
+    } else {
+      recordedHandRef.current = hydrated.gameNumber - 1
+    }
     setMpHydrated(true)
     setStarted(true)
 
@@ -708,13 +746,15 @@ export default function App() {
     recordedHandRef.current = state.gameNumber
     const won = state.scoreboard.winner === 'player'
     const tied = state.scoreboard.winner === 'tie'
-    recordHandResult(won)
-    void friendsAdapter.syncLifetimeStats(getLifetimeStats())
+    const resultId = mpState.matchId
+      ? `${mpState.matchId}_${state.gameNumber}`
+      : undefined
+    const { didRecord } = recordHandResult(won, 'multiplayer', resultId)
+    if (didRecord) {
+      void friendsAdapter.syncLifetimeStats(getLifetimeStats())
+    }
     if (mpState.opponentUid && mpState.opponentName) {
       const result = tied ? 'tie' : won ? 'win' : 'lose'
-      const resultId = mpState.matchId
-        ? `${mpState.matchId}_${state.gameNumber}`
-        : undefined
       void friendsAdapter.recordMatchResult(
         mpState.opponentUid,
         mpState.opponentName,
@@ -723,6 +763,7 @@ export default function App() {
         mpStarterUid(),
       )
     }
+    if (!didRecord) return
     if (won) vibrate(WIN)
 
     const result = winnerToResult(state.scoreboard.winner)
@@ -789,8 +830,10 @@ export default function App() {
       // Record H2H even if gameOver was already set (hydrate / race)
       if (recordedHandRef.current !== state.gameNumber) {
         recordedHandRef.current = state.gameNumber
-        recordHandResult(true)
-        void friendsAdapter.syncLifetimeStats(getLifetimeStats())
+        const { didRecord } = recordHandResult(true, 'multiplayer', resultId)
+        if (didRecord) {
+          void friendsAdapter.syncLifetimeStats(getLifetimeStats())
+        }
         if (mpState.opponentUid && mpState.opponentName) {
           void friendsAdapter.recordMatchResult(
             mpState.opponentUid,
@@ -799,6 +842,10 @@ export default function App() {
             resultId,
             mpStarterUid(),
           )
+        }
+        if (!didRecord) {
+          setMpEndSynced(true)
+          return
         }
         vibrate(WIN)
         const endedReason =
@@ -1361,11 +1408,13 @@ export default function App() {
       return
     }
     recordedHandRef.current = state.gameNumber
-    recordHandResult(false)
-    void friendsAdapter.syncLifetimeStats(getLifetimeStats())
     const resultId = mpState.matchId
       ? `${mpState.matchId}_${state.gameNumber}_forfeit`
       : undefined
+    const { didRecord } = recordHandResult(false, 'multiplayer', resultId)
+    if (didRecord) {
+      void friendsAdapter.syncLifetimeStats(getLifetimeStats())
+    }
     void friendsAdapter.recordMatchResult(
       mpState.opponentUid,
       mpState.opponentName,
@@ -1380,6 +1429,7 @@ export default function App() {
     state.gameNumber,
     mpStarterUid,
   ])
+  recordForfeitLossRef.current = recordForfeitLoss
 
   const handleResignConfirm = useCallback(() => {
     setResignOpen(false)

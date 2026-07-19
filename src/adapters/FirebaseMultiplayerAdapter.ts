@@ -12,7 +12,13 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore'
-import { ensureAnonymousAuth, getFirebaseDb, MATCHES_COLLECTION } from '../firebase/config'
+import {
+  ensureAnonymousAuth,
+  getFirebaseDb,
+  FRIEND_RIVALS_COLLECTION,
+  MATCHES_COLLECTION,
+} from '../firebase/config'
+import { friendRivalPairId } from '../friends/pairId'
 import type { PistiMatchDoc, PistiMatchSnapshot } from '../multiplayer/types'
 import type { MultiplayerPort } from '../ports'
 import { TURN_TIMER } from '../app/TurnTimer'
@@ -289,6 +295,15 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
       if (!snap.exists()) throw new Error('Oda bulunamadı.')
 
       const data = snap.data() as PistiMatchDoc
+      const creatorUid = data.createdBy
+
+      // Head-to-head history for this pair, read INSIDE the transaction (all
+      // reads must precede writes; a retry re-reads, keeping it consistent).
+      // Decides who leads: last game's winner, or on a tie its starter.
+      const rivalSnap = await transaction.get(
+        doc(db, FRIEND_RIVALS_COLLECTION, friendRivalPairId(uid, creatorUid)),
+      )
+
       const now = Date.now()
       const playerUids = Object.keys(data.players)
 
@@ -309,10 +324,21 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
         throw new Error('Oda zaman aşımına uğradı. Yeni bir davet iste.')
       }
 
-      const creatorUid = data.createdBy
       // Stable seats: creator always seat 0, joiner always seat 1.
-      // firstSeat is chosen independently so either side can lead.
-      const firstSeat: 0 | 1 = Math.random() < 0.5 ? 0 : 1
+      // firstSeat is written exactly once, here, by the joiner — both clients
+      // then read it from the match doc, so they can never disagree.
+      // First-ever pairing → random; otherwise the latest game's winner leads,
+      // and after a tie the player who led that tied game leads again.
+      let firstSeat: 0 | 1 = Math.random() < 0.5 ? 0 : 1
+      if (rivalSnap.exists()) {
+        const rival = rivalSnap.data() as {
+          lastWinnerUid?: string | null
+          lastStarterUid?: string | null
+        }
+        const leaderUid = rival.lastWinnerUid ?? rival.lastStarterUid ?? null
+        if (leaderUid === creatorUid) firstSeat = 0
+        else if (leaderUid === uid) firstSeat = 1
+      }
       const seats: Record<string, string> = { '0': creatorUid, '1': uid }
 
       transaction.update(roomRef, {

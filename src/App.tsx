@@ -30,6 +30,7 @@ import { useMultiplayer, type MultiplayerState } from './app/useMultiplayer'
 import { usePlayerProfile } from './app/usePlayerProfile'
 import { useUserPresence } from './app/useUserPresence'
 import { getJoinCodeFromUrl, setJoinCodeInUrl, clearGameUrl, pushSoloGameUrl, shareInviteLink } from './app/shareInvite'
+import { subscribeUpdateReady, applyUpdate } from './pwa'
 import { getBot } from './game/bots/registry'
 import { runTournament } from './game/bots/selfplay'
 import type { Card as CardType } from './game/cards'
@@ -275,6 +276,16 @@ export default function App() {
   const mpStateRef = useRef(mpState)
   mpStateRef.current = mpState
 
+  // Who led the current hand — recorded with each H2H result so the next match
+  // between this pair can seat the right starter. Both clients compute this
+  // from the same shared doc fields (firstSeat/seats), so they always agree.
+  const mpStarterUid = useCallback((): string | null => {
+    const mp = mpStateRef.current
+    const myUid = mpAdapter.getLocalUid()
+    if (mp.firstSeat === null || mp.localSeat === null || !myUid || !mp.opponentUid) return null
+    return mp.firstSeat === mp.localSeat ? myUid : mp.opponentUid
+  }, [])
+
   // ── Deep link join ───────────────────────────────────────────────────────
   // The join itself is deferred: a first-time player must enter their name
   // BEFORE we touch the room, otherwise the match starts (and the name is
@@ -334,6 +345,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingJoinCode, profileLoaded, username])
 
+  // ── App update pickup ────────────────────────────────────────────────────
+  // A new deploy installs in the background (see src/pwa.ts) and is applied by
+  // refreshing the page — but only from the main menu, never mid-game. Players
+  // who are in a game pick it up as soon as they return to the menu.
+  const [updateReady, setUpdateReady] = useState(false)
+  useEffect(() => subscribeUpdateReady(setUpdateReady), [])
+
   // ── UI state ─────────────────────────────────────────────────────────────
   const [resignOpen, setResignOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -344,6 +362,14 @@ export default function App() {
   const [showCountdown, setShowCountdown] = useState(false)
   const [debugMpEnd, setDebugMpEnd] = useState<ReturnType<typeof makeDebugMpEnd> | null>(null)
   const [rivalry, setRivalry] = useState<RivalryStats | null>(null)
+
+  // Refresh onto a freshly shipped version only while parked on the main menu
+  // (and not while the user is typing their name — the reload would eat it).
+  useEffect(() => {
+    if (!updateReady || started) return
+    if (showNamePrompt || editingName) return
+    applyUpdate()
+  }, [updateReady, started, showNamePrompt, editingName])
 
   // ── Emoji handler (MP mode only) ──────────────────────────────────────────
   const handleEmojiClick = useCallback(async (emoji: string) => {
@@ -614,6 +640,7 @@ export default function App() {
         mpState.opponentName,
         result,
         resultId,
+        mpStarterUid(),
       )
     }
     if (won) vibrate(WIN)
@@ -625,6 +652,7 @@ export default function App() {
     mpState.opponentUid,
     mpState.opponentName,
     mpState.matchId,
+    mpStarterUid,
   ])
 
   // ── MP: when match ends, force-sync final score from the shared move log ───
@@ -671,6 +699,7 @@ export default function App() {
             mpState.opponentName,
             'win',
             resultId,
+            mpStarterUid(),
           )
         }
         vibrate(WIN)
@@ -1187,12 +1216,14 @@ export default function App() {
       mpState.opponentName,
       'lose',
       resultId,
+      mpStarterUid(),
     )
   }, [
     mpState.opponentUid,
     mpState.opponentName,
     mpState.matchId,
     state.gameNumber,
+    mpStarterUid,
   ])
 
   const handleResignConfirm = useCallback(() => {

@@ -72,6 +72,10 @@ interface FriendRivalDoc {
   ties: number
   lastMatchAt?: unknown
   lastMatchId?: string
+  /** Winner of the latest recorded game; null when it was a tie. */
+  lastWinnerUid?: string | null
+  /** Who led (played first in) the latest recorded game. */
+  lastStarterUid?: string | null
 }
 
 interface GameRequestDoc {
@@ -396,6 +400,7 @@ export class FirebaseFriendsAdapter implements FriendsPort {
     opponentName: string,
     result: 'win' | 'lose' | 'tie',
     resultId?: string,
+    starterUid?: string | null,
   ): Promise<void> {
     const uid = await this.getUid()
     if (uid === opponentUid) return
@@ -428,6 +433,13 @@ export class FirebaseFriendsAdapter implements FriendsPort {
         wins[opponentUid] = (wins[opponentUid] ?? 0) + 1
       }
 
+      // Both clients compute identical values here (winner side writes its own
+      // uid, loser side writes opponentUid — same player), and the lastMatchId
+      // dedupe above means only the first writer lands, so the "latest game"
+      // fields can never diverge between the two clients.
+      const lastWinnerUid =
+        result === 'tie' ? null : result === 'win' ? uid : opponentUid
+
       tx.set(
         rivalRef,
         {
@@ -435,6 +447,8 @@ export class FirebaseFriendsAdapter implements FriendsPort {
           wins,
           ties,
           lastMatchAt: now,
+          lastWinnerUid,
+          ...(starterUid !== undefined ? { lastStarterUid: starterUid } : {}),
           ...(resultId ? { lastMatchId: resultId } : {}),
         },
         { merge: true },

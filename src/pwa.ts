@@ -4,15 +4,40 @@ import { registerSW } from 'virtual:pwa-register'
 // How often to ask the browser to look for a newer deployed version.
 const UPDATE_INTERVAL_MS = 60_000
 
-// In `autoUpdate` mode vite-plugin-pwa reloads the page automatically once a new
-// service worker activates. The catch: it only checks for a new version at page
-// load. Long-lived sessions (installed PWA, a tab that never fully closes on
-// mobile) therefore keep running stale code and miss fixes. We register the SW
-// ourselves and actively poll for updates so a fresh deploy is picked up within
-// a minute, and immediately whenever the app regains focus.
+// The service worker runs in `prompt` mode: a freshly deployed version installs
+// in the background and then WAITS. We poll aggressively (interval + focus) so
+// the wait state is reached within a minute of a deploy, and the app applies it
+// at a safe moment — on the main menu — via applyUpdate(), which activates the
+// waiting worker and reloads onto the new version. Never mid-hand.
+
+type UpdateListener = (ready: boolean) => void
+
+let updateReady = false
+let applyFn: ((reloadPage?: boolean) => Promise<void>) | null = null
+const listeners = new Set<UpdateListener>()
+
+/** Subscribe to "a new version is installed and waiting". Fires immediately
+ *  with the current state; returns an unsubscribe function. */
+export function subscribeUpdateReady(listener: UpdateListener): () => void {
+  listeners.add(listener)
+  listener(updateReady)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+/** Activate the waiting service worker and reload the page onto it. */
+export function applyUpdate(): void {
+  void applyFn?.(true)
+}
+
 export function setupPwa() {
-  registerSW({
+  applyFn = registerSW({
     immediate: true,
+    onNeedRefresh() {
+      updateReady = true
+      for (const listener of listeners) listener(true)
+    },
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return
 

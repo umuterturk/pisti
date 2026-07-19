@@ -22,6 +22,9 @@ export const GESTURE = {
   throwVelocity: 380,
   reorderDistance: 22,
   snapBackMax: 18,
+  /** Press displacement/duration under these counts as a tap → plays the card. */
+  tapMaxDistance: 10,
+  tapMaxMs: 300,
 } as const
 
 export const THROW = {

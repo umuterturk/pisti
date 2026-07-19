@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, memo, type RefObject } from 'react'
 import type { Card as CardType } from '../game/cards'
 import { classifyRelease } from '../motion/gesture'
 import { type HandSlot } from '../motion/handLayout'
-import { HAND_CARD_HEIGHT, HAND_CARD_WIDTH, SPRING, TIMING, TOUCH } from '../motion/params'
+import { GESTURE, HAND_CARD_HEIGHT, HAND_CARD_WIDTH, SPRING, TIMING, TOUCH } from '../motion/params'
 import { vibrate, TAP } from '../game/haptics'
 import { Card } from './Card'
 
@@ -58,7 +58,8 @@ function HandCardComponent({
   // True while the staggered deal-in is playing; the slot-follow effect must not
   // interrupt it (e.g. when the hand's ResizeObserver corrects the width).
   const dealingRef = useRef(false)
-  const lastTapTimeRef = useRef(0)
+  // Where/when the current press started, for tap-vs-drag discrimination.
+  const pressRef = useRef<{ x: number; y: number; t: number } | null>(null)
 
   // Deal-in animation, runs once on mount. Runs before paint so there is no
   // flash of the card at its slot before it flies in from the HUD.
@@ -148,19 +149,29 @@ function HandCardComponent({
     animate(rotate, slot.rotate, { ...SPRING.snapBack, duration: TIMING.snapBack })
   }
 
-  const handleTouchEnd = () => {
+  const handlePointerDown = (e: React.PointerEvent) => {
     if (disabled) return
-    const now = Date.now()
-    if (now - lastTapTimeRef.current < 300 && ref.current) {
-      // Double-tap: play the card with synthetic pan info that triggers THROW
-      vibrate(TAP)
-      const syntheticInfo = {
-        offset: { x: 0, y: 0 },
-        velocity: { x: 0, y: 400 },
-      } as PanInfo
-      onThrow(card, syntheticInfo, ref.current)
-    }
-    lastTapTimeRef.current = now
+    pressRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }
+  }
+
+  // Single tap (or mouse click) plays the card. Tap-vs-drag is discriminated by
+  // our own displacement/duration thresholds rather than Framer's drag state,
+  // because pointerup vs dragEnd ordering differs across browsers. A real
+  // drag-throw exceeds tapMaxDistance, so it can't double-fire; and even a
+  // pathological double onThrow is rejected by useGame (phase 'animating').
+  const handlePointerUp = (e: React.PointerEvent) => {
+    const press = pressRef.current
+    pressRef.current = null
+    if (disabled || !press || !ref.current) return
+    const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y)
+    if (moved > GESTURE.tapMaxDistance) return
+    if (Date.now() - press.t > GESTURE.tapMaxMs) return
+    vibrate(TAP)
+    const syntheticInfo = {
+      offset: { x: 0, y: 0 },
+      velocity: { x: 0, y: 400 },
+    } as PanInfo
+    onThrow(card, syntheticInfo, ref.current)
   }
 
   return (
@@ -193,7 +204,8 @@ function HandCardComponent({
       onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
-      onTouchEnd={handleTouchEnd}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
     >
       <Card
         card={card}

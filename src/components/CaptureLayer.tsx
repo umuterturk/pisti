@@ -1,8 +1,16 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { CARD_HEIGHT, CARD_WIDTH, TIMING } from '../motion/params'
 import type { Card as CardType } from '../game/cards'
+import { isWeakDevice } from '../perf/deviceTier'
 import { Card } from './Card'
 import { scatterFor, type PileVisuals } from './TablePile'
+
+// Spark burst sizing: weak devices keep the original budget (none on a single
+// pişti, 14 on a double); strong devices get a burst on every pişti.
+function sparkCountFor(doublePisti: boolean): number {
+  if (isWeakDevice()) return doublePisti ? 14 : 0
+  return doublePisti ? 28 : 14
+}
 
 export interface CaptureState {
   id: string
@@ -98,40 +106,42 @@ export function CaptureLayer({ capture, visuals }: CaptureLayerProps) {
                 }}
               />
               {capture.doublePisti && (
-                <>
-                  <motion.div
-                    className="capture-layer__flash capture-layer__flash--double"
-                    style={{ position: 'fixed', left: capture.originX, top: capture.originY }}
-                    initial={{ scale: 0, opacity: 0.7 }}
-                    animate={{ scale: 14, opacity: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ delay: TIMING.capturePause + 0.14, duration: 0.9, ease: 'easeOut' }}
-                  />
-                  {Array.from({ length: 14 }, (_, i) => {
-                    const angle = (i / 14) * Math.PI * 2
-                    const dist = 150 + (i % 3) * 40
-                    return (
-                      <motion.div
-                        key={i}
-                        className="capture-layer__spark"
-                        style={{ position: 'fixed', left: capture.originX, top: capture.originY }}
-                        initial={{ x: 0, y: 0, scale: 0, opacity: 0 }}
-                        animate={{
-                          x: Math.cos(angle) * dist,
-                          y: Math.sin(angle) * dist,
-                          scale: [0, 1.2, 0],
-                          opacity: [0, 1, 0],
-                        }}
-                        transition={{
-                          delay: TIMING.capturePause + 0.08,
-                          duration: 0.85,
-                          ease: 'easeOut',
-                        }}
-                      />
-                    )
-                  })}
-                </>
+                <motion.div
+                  className="capture-layer__flash capture-layer__flash--double"
+                  style={{ position: 'fixed', left: capture.originX, top: capture.originY }}
+                  initial={{ scale: 0, opacity: 0.7 }}
+                  animate={{ scale: 14, opacity: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ delay: TIMING.capturePause + 0.14, duration: 0.9, ease: 'easeOut' }}
+                />
               )}
+              {(() => {
+                const count = sparkCountFor(capture.doublePisti)
+                const baseDist = capture.doublePisti ? 150 : 110
+                return Array.from({ length: count }, (_, i) => {
+                  const angle = (i / count) * Math.PI * 2
+                  const dist = baseDist + (i % 3) * 40
+                  return (
+                    <motion.div
+                      key={i}
+                      className="capture-layer__spark"
+                      style={{ position: 'fixed', left: capture.originX, top: capture.originY }}
+                      initial={{ x: 0, y: 0, scale: 0, opacity: 0 }}
+                      animate={{
+                        x: Math.cos(angle) * dist,
+                        y: Math.sin(angle) * dist,
+                        scale: [0, 1.2, 0],
+                        opacity: [0, 1, 0],
+                      }}
+                      transition={{
+                        delay: TIMING.capturePause + 0.08,
+                        duration: 0.85,
+                        ease: 'easeOut',
+                      }}
+                    />
+                  )
+                })
+              })()}
               {streakLabel(capture.pistiStreak) && (
                 <div
                   className="capture-layer__anchor"

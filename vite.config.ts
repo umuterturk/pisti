@@ -13,7 +13,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': the updated worker installs and WAITS. The app decides when
+      // to activate it (src/pwa.ts applyUpdate) — on the main menu, never
+      // mid-hand. 'autoUpdate' + skipWaiting hard-reloaded players mid-game.
+      registerType: 'prompt',
       // We register + poll for updates ourselves in src/pwa.ts, so the plugin
       // must not also inject its own bare registration script.
       injectRegister: false,
@@ -23,10 +26,10 @@ export default defineConfig({
         'og-image.jpg',
       ],
       workbox: {
-        // Take control immediately so an updated worker can activate (and the
-        // page auto-reload) without waiting for every tab to close first.
+        // skipWaiting must stay off (worker waits for applyUpdate), but claim
+        // clients on activation so the reload lands on the new version at once.
         clientsClaim: true,
-        skipWaiting: true,
+        skipWaiting: false,
         cleanupOutdatedCaches: true,
       },
       manifest: {

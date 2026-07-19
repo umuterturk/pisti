@@ -75,12 +75,15 @@ export interface FriendsPort {
   isFriend(uid: string): Promise<boolean>
   listFriends(): Promise<FriendEntry[]>
   listOtherPlayers(): Promise<PlayerEntry[]>
-  /** Update head-to-head W/L/T against a friend (idempotent per resultId). */
+  /** Update head-to-head W/L/T against a friend (idempotent per resultId).
+   *  `starterUid` records who led the game so the next match between this pair
+   *  can seat the right starter (winner leads; on a tie the same starter leads). */
   recordMatchResult(
     opponentUid: string,
     opponentName: string,
     result: 'win' | 'lose' | 'tie',
     resultId?: string,
+    starterUid?: string | null,
   ): Promise<void>
   sendGameRequest(toUid: string, matchId: string, inviteCode: string): Promise<GameRequest>
   subscribeIncomingRequests(handler: (request: GameRequest | null) => void): () => void

@@ -403,11 +403,16 @@ export default function App() {
     applyUpdate()
   }, [updateReady, started, showNamePrompt, editingName])
 
-  // ── Emoji handler (MP mode only) ──────────────────────────────────────────
-  const handleEmojiClick = useCallback(async (emoji: string) => {
+  // ── Reaction handler (MP mode only) ───────────────────────────────────────
+  const handleReaction = useCallback(async (pick: { kind: 'emoji' | 'text'; value: string }) => {
     if (!isMpMode || mpState.phase !== 'playing') return
-    track('emoji_send', { emoji, mode: getPlayMode() })
-    await mpAdapter.sendEmoji(emoji)
+    if (pick.kind === 'emoji') {
+      track('emoji_send', { emoji: pick.value, mode: getPlayMode() })
+      await mpAdapter.sendEmoji(pick.value)
+    } else {
+      track('text_send', { text: pick.value, mode: getPlayMode() })
+      await mpAdapter.sendText(pick.value)
+    }
   }, [isMpMode, mpState.phase])
 
   // Refresh friends when returning home, and poll so opponent leave/presence updates show up
@@ -2043,7 +2048,7 @@ export default function App() {
           turnDeadline={localTurnDeadline}
           onTurnExpire={handleTurnExpire}
           isMultiplayer={isMpMode}
-          onEmojiClick={handleEmojiClick}
+          onReaction={handleReaction}
         />
       </div>
 

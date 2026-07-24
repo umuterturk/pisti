@@ -351,15 +351,30 @@ textarea {
 }
 
 /*
- * Reaction picker — single chip perched on top of the player's score/timer
+ * Reaction pickers — emoji + text chips perched above the player's score/timer
  * badge. Tap opens an upward accordion for 3s; pick or timeout snaps it shut.
  */
-.hud__react {
+.hud__reacts {
   position: absolute;
-  right: 12px;
+  right: 4px;
   bottom: calc(8px + 56px + 6px);
-  width: 40px;
   z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.hud:has(.hud__badge--timer) .hud__reacts {
+  bottom: calc(8px + 68px + 6px);
+}
+
+.hud__react {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  width: 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -367,8 +382,25 @@ textarea {
 }
 
 .hud:has(.hud__badge--timer) .hud__react {
-  bottom: calc(8px + 68px + 6px);
+  bottom: auto;
   width: 44px;
+}
+
+.hud__react--text {
+  width: 40px;
+  /* Anchor the Aa chip on the right; pills grow left so they stay on-screen. */
+  align-items: flex-end;
+}
+
+.hud:has(.hud__badge--timer) .hud__react--text {
+  width: 44px;
+}
+
+.hud__react--text .hud__react-rail {
+  /* Let taunt pills size to their text; don't clamp to the 40px chip column. */
+  width: max-content;
+  align-items: flex-end;
+  transform-origin: bottom right;
 }
 
 .hud__react-rail {
@@ -390,7 +422,7 @@ textarea {
 }
 
 .hud__react--open .hud__react-rail {
-  max-height: 260px;
+  max-height: 320px;
   opacity: 1;
   overflow: visible;
   pointer-events: auto;
@@ -447,6 +479,26 @@ textarea {
   transform: scale(0.9);
 }
 
+.hud__react-option--text {
+  width: max-content;
+  max-width: none;
+  min-width: 0;
+  height: auto;
+  min-height: 34px;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #ffd54f;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+.hud__react-option--text:hover {
+  transform: translateY(-2px) scale(1.05);
+}
+
 .hud__react-trigger {
   position: relative;
   pointer-events: auto;
@@ -476,7 +528,7 @@ textarea {
 }
 
 .hud:has(.hud__badge--timer) .hud__react-trigger,
-.hud:has(.hud__badge--timer) .hud__react-option {
+.hud:has(.hud__badge--timer) .hud__react-option:not(.hud__react-option--text) {
   width: 42px;
   height: 42px;
 }
@@ -514,7 +566,19 @@ textarea {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
 }
 
-.hud__react--open .hud__react-trigger-emoji {
+.hud__react-trigger-text {
+  position: relative;
+  z-index: 2;
+  font-size: 0.85rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: #ffd54f;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.hud__react--open .hud__react-trigger-emoji,
+.hud__react--open .hud__react-trigger-text {
   animation: hud-react-pulse 0.55s ease-in-out infinite;
 }
 
@@ -574,7 +638,8 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
   .hud__react-trigger,
-  .hud__react--open .hud__react-trigger-emoji {
+  .hud__react--open .hud__react-trigger-emoji,
+  .hud__react--open .hud__react-trigger-text {
     animation: none;
   }
   .hud__react-rail,
@@ -658,6 +723,88 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
   .emoji-burst {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Taunt text — gold pişti look; travels like emoji-burst (toward / from opponent). */
+.text-burst {
+  position: absolute;
+  font-size: clamp(1.35rem, 5.5vw, 2.25rem);
+  font-weight: 900;
+  color: #ffd54f;
+  text-shadow:
+    0 0 20px rgba(255, 213, 79, 0.95),
+    0 0 40px rgba(255, 168, 38, 0.6),
+    0 3px 14px rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 201;
+  will-change: transform, opacity;
+}
+
+/* Receiver: from opponent (top) → toward player, growing + fade out. */
+.text-burst--from-top {
+  top: 72px;
+  left: 50%;
+  animation: text-burst-from-top 2s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
+}
+
+/* Sender: from player (bottom) → toward opponent, growing + fade out. */
+.text-burst--from-bottom {
+  bottom: 96px;
+  left: 50%;
+  animation: text-burst-from-bottom 2s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
+}
+
+@keyframes text-burst-from-top {
+  0% {
+    transform: translate(-50%, 0) scale(0.45) rotate(-8deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  45% {
+    transform: translate(-50%, 32vh) scale(1.85) rotate(-3deg);
+    opacity: 1;
+  }
+  72% {
+    transform: translate(-50%, 40vh) scale(2.35) rotate(2deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, 48vh) scale(3.1) rotate(5deg);
+    opacity: 0;
+  }
+}
+
+@keyframes text-burst-from-bottom {
+  0% {
+    transform: translate(-50%, 0) scale(0.45) rotate(8deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  45% {
+    transform: translate(-50%, -32vh) scale(1.85) rotate(3deg);
+    opacity: 1;
+  }
+  72% {
+    transform: translate(-50%, -40vh) scale(2.35) rotate(-2deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -48vh) scale(3.1) rotate(-5deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .text-burst {
     animation: none;
     opacity: 0;
   }

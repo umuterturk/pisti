@@ -8,8 +8,10 @@ export interface PistiMatchPlayer {
   left?: boolean
 }
 
+/** In-match reaction: either an emoji or a taunt text (one of the two is set). */
 export interface EmojiReaction {
-  emoji: string
+  emoji?: string
+  text?: string
   from: string
   timestamp: number
 }

@@ -546,6 +546,14 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
   }
 
   async sendEmoji(emoji: string): Promise<void> {
+    await this.appendReaction({ emoji })
+  }
+
+  async sendText(text: string): Promise<void> {
+    await this.appendReaction({ text })
+  }
+
+  private async appendReaction(payload: { emoji?: string; text?: string }): Promise<void> {
     if (!this.matchId || !this.localUid) return
     const ref = this.matchRef
 
@@ -556,7 +564,7 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
       const data = snap.data() as PistiMatchDoc
       const reactions = data.reactions ?? []
       const newReaction = {
-        emoji,
+        ...payload,
         from: this.localUid,
         timestamp: Date.now(),
       }

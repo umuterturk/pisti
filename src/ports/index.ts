@@ -13,6 +13,7 @@ export interface MultiplayerPort {
   forfeitForHeartbeat(): Promise<void>
   getActiveMatchId(): string | null
   sendEmoji(emoji: string): Promise<void>
+  sendText(text: string): Promise<void>
   getLocalUid(): string | null
 }
 

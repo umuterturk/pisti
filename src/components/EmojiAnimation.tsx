@@ -6,15 +6,19 @@ interface EmojiAnimationProps {
   localUid: string
 }
 
-interface AnimatingEmoji {
+interface AnimatingReaction {
   id: string
-  emoji: string
+  emoji?: string
+  text?: string
   timestamp: number
   fromTop: boolean
 }
 
+/** Matches emoji-burst / text-burst CSS animation duration (2s incl. fade-out). */
+const BURST_MS = 2000
+
 export function EmojiAnimation({ reactions, localUid }: EmojiAnimationProps) {
-  const [animating, setAnimating] = useState<AnimatingEmoji[]>([])
+  const [animating, setAnimating] = useState<AnimatingReaction[]>([])
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -29,35 +33,44 @@ export function EmojiAnimation({ reactions, localUid }: EmojiAnimationProps) {
       const id = `${r.from}-${r.timestamp}`
       setProcessedIds((prev) => new Set(prev).add(id))
 
-      // fromTop = true if sender is opponent (their emoji comes from top HUD)
+      // fromTop = true if sender is opponent (comes from top, travels toward player)
       const fromTop = r.from !== localUid
 
-      const emoji: AnimatingEmoji = {
+      const item: AnimatingReaction = {
         id,
         emoji: r.emoji,
+        text: r.text,
         timestamp: r.timestamp,
         fromTop,
       }
 
-      setAnimating((prev) => [...prev, emoji])
+      setAnimating((prev) => [...prev, item])
 
-      // Must match the emoji-burst CSS animation duration (2s incl. fade-out)
       setTimeout(() => {
         setAnimating((prev) => prev.filter((e) => e.id !== id))
-      }, 2000)
+      }, BURST_MS)
     })
   }, [reactions, localUid, processedIds])
 
   return (
     <div className="emoji-animation-layer">
-      {animating.map((e) => (
-        <div
-          key={e.id}
-          className={`emoji-burst ${e.fromTop ? 'emoji-burst--from-top' : 'emoji-burst--from-bottom'}`}
-        >
-          {e.emoji}
-        </div>
-      ))}
+      {animating.map((e) =>
+        e.text ? (
+          <div
+            key={e.id}
+            className={`text-burst ${e.fromTop ? 'text-burst--from-top' : 'text-burst--from-bottom'}`}
+          >
+            {e.text}
+          </div>
+        ) : (
+          <div
+            key={e.id}
+            className={`emoji-burst ${e.fromTop ? 'emoji-burst--from-top' : 'emoji-burst--from-bottom'}`}
+          >
+            {e.emoji}
+          </div>
+        ),
+      )}
     </div>
   )
 }

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { getBot, DEFAULT_BOT_ID } from './bots/registry'
 import type { BotContext } from './bots/types'
 import { dealNewGame, dealNewGameSeeded, type Card } from './cards'
-import { applyMove, finalScore, HAND_SIZE, isTerminal, type SimState } from './engine'
+import { applyMove, finalScore, HAND_SIZE, isTerminal, type SimState, type GameMode } from './engine'
 import { checkCapture, type Scoreboard } from './rules'
 import { randomRng } from './rng'
 
@@ -57,6 +57,10 @@ export interface GameState {
    * deal the same cards to the same seats on both clients. Solo = 0.
    */
   localSeat: 0 | 1
+  /** Active ruleset for this match. Classic: batch refill when both hands empty. Pisti4: draw one card per play. */
+  mode: GameMode
+  /** Bumped whenever a single card is drawn in pisti4 mode, so the UI can gate the next turn briefly. */
+  drawSerial: number
 }
 
 // Monotonic counter so every fresh deal produces a unique serial, even if two
@@ -74,6 +78,7 @@ function freshState(
   // the player for the very first game of a match.
   startingTurn: Turn = 'player',
   activeBotId: string = DEFAULT_BOT_ID,
+  mode: GameMode = 'classic',
 ): GameState {
   const { playerHand, opponentHand, table, deck } = dealNewGame(HAND_SIZE)
   return {
@@ -98,6 +103,8 @@ function freshState(
     dealSerial: nextDealSerial(),
     activeBotId,
     localSeat: 0,
+    mode,
+    drawSerial: 0,
   }
 }
 
@@ -125,6 +132,8 @@ export function blankMpWaitingState(): GameState {
     dealSerial: 0,
     activeBotId: DEFAULT_BOT_ID,
     localSeat: 0,
+    mode: 'classic',
+    drawSerial: 0,
   }
 }
 
@@ -142,6 +151,7 @@ export function hydrateGameState(
   firstSeat: 0 | 1,
   games: MatchScore = { player: 0, opponent: 0 },
   gameNumber = 1,
+  mode: GameMode = 'classic',
 ): GameState {
   const { playerHand, opponentHand, table, deck } = dealNewGameSeeded(seed, localSeat)
   const startingTurn: Turn = firstSeat === localSeat ? 'player' : 'opponent'
@@ -164,6 +174,7 @@ export function hydrateGameState(
 
   let pistiStreak = 0
   let dealSerial = nextDealSerial()
+  let drawSerial = 0
 
   for (const cardId of moves) {
     const { captured, pisti } = checkCapture(
@@ -171,8 +182,9 @@ export function hydrateGameState(
       sim.pile,
     )
     pistiStreak = captured ? (pisti ? pistiStreak + 1 : 0) : pistiStreak
-    const { next, refilled } = applyMove(sim, cardId)
+    const { next, refilled, drew } = applyMove(sim, cardId, mode)
     if (refilled) dealSerial = nextDealSerial()
+    if (drew) drawSerial = nextDealSerial()
     sim = next
   }
 
@@ -210,6 +222,8 @@ export function hydrateGameState(
       dealSerial,
       activeBotId: DEFAULT_BOT_ID,
       localSeat,
+      mode,
+      drawSerial,
     }
   }
 
@@ -235,6 +249,8 @@ export function hydrateGameState(
     dealSerial,
     activeBotId: DEFAULT_BOT_ID,
     localSeat,
+    mode,
+    drawSerial,
   }
 }
 
@@ -274,7 +290,7 @@ function commit(prev: GameState, result: PlayResult): GameState {
     opponentHand:
       who === 'opponent' ? [...base.opponentHand, result.playedCard] : base.opponentHand,
   }
-  const { next, refilled } = applyMove(restored, result.playedCard.id)
+  const { next, refilled, drew } = applyMove(restored, result.playedCard.id, prev.mode)
 
   // A pişti extends the combo; any other capture snaps it; a non-capture leaves
   // it. (Purely cosmetic — the engine doesn't track it.)
@@ -284,6 +300,7 @@ function commit(prev: GameState, result: PlayResult): GameState {
       : 0
     : prev.pistiStreak
   const dealSerial = refilled ? nextDealSerial() : prev.dealSerial
+  const drawSerial = drew ? nextDealSerial() : prev.drawSerial
 
   const shared = {
     ...prev,
@@ -298,6 +315,7 @@ function commit(prev: GameState, result: PlayResult): GameState {
     lastCapturer: next.lastCapturer,
     phase: 'idle' as const,
     dealSerial,
+    drawSerial,
   }
 
   if (isTerminal(next)) {

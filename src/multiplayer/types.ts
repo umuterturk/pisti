@@ -1,3 +1,5 @@
+import type { GameMode } from '../game/engine'
+
 export type PistiFirestoreStatus = 'waiting' | 'ready' | 'playing' | 'ended'
 
 export interface PistiMatchPlayer {
@@ -48,6 +50,8 @@ export interface PistiMatchDoc {
   winnerSeat?: 0 | 1 | null
   /** Latest emoji reactions sent between players */
   reactions?: EmojiReaction[]
+  /** Active ruleset: 'classic' (default) or 'pisti4' (draw one card per play). */
+  mode: GameMode
 }
 
 /** Parsed view of a match snapshot, from the local player's perspective. */
@@ -72,4 +76,5 @@ export interface PistiMatchSnapshot {
   endedReason?: string
   winnerUid?: string | null
   reactions?: EmojiReaction[]
+  mode: GameMode
 }

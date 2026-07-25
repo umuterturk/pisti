@@ -89,6 +89,7 @@ interface GameRequestDoc {
   status: GameRequestStatus
   createdAt: unknown
   expiresAt: unknown
+  mode?: string
 }
 
 function timestampToMs(value: unknown): number | undefined {
@@ -115,6 +116,7 @@ function parseGameRequest(id: string, data: GameRequestDoc): GameRequest | null 
     inviteCode: data.inviteCode,
     status: data.status,
     createdAt,
+    mode: (data.mode === 'pisti4' ? 'pisti4' : 'classic') as import('../game/engine').GameMode,
   }
 }
 
@@ -486,6 +488,7 @@ export class FirebaseFriendsAdapter implements FriendsPort {
     toUid: string,
     matchId: string,
     inviteCode: string,
+    mode: import('../game/engine').GameMode = 'classic',
   ): Promise<GameRequest> {
     const fromUid = await this.getUid()
     const fromName =
@@ -499,6 +502,7 @@ export class FirebaseFriendsAdapter implements FriendsPort {
       toUid,
       matchId,
       inviteCode,
+      mode,
       status: 'pending' as const,
       createdAt: serverTimestamp(),
       expiresAt,
@@ -513,6 +517,7 @@ export class FirebaseFriendsAdapter implements FriendsPort {
       inviteCode,
       status: 'pending',
       createdAt: Date.now(),
+      mode,
     }
   }
 

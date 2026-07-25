@@ -6,10 +6,12 @@ import { EmojiAnimation } from './components/EmojiAnimation'
 import {
   createFlyingCardFromThrow,
   createOpponentFlyingCard,
+  createDeckDrawFlyingCard,
   type FlyingCardState,
   type LandingResult,
 } from './components/flyingCard'
 import { ConfirmDialog } from './components/ConfirmDialog'
+import { GameModeDialog } from './components/GameModeDialog'
 import { GameOver } from './components/GameOver'
 import { Hud } from './components/Hud'
 import { OpponentArea } from './components/OpponentArea'
@@ -53,7 +55,7 @@ import {
   PISTI_BONUS,
   type Scoreboard,
 } from './game/rules'
-import { TIMING } from './motion/params'
+import { OPP_CARD_WIDTH, TIMING } from './motion/params'
 import { FirebaseMultiplayerAdapter } from './adapters/FirebaseMultiplayerAdapter'
 import { FirebaseFriendsAdapter } from './adapters/FirebaseFriendsAdapter'
 import { LocalStorageAdapter } from './adapters/LocalStorageAdapter'
@@ -89,6 +91,8 @@ const joinBootstrapCodes = new Set<string>()
 
 const CAPTURE_TOTAL_MS = (TIMING.capturePause + TIMING.captureMove) * 1000 + 120
 const DEAL_ANIM_MS = 950
+/** Single-card draw animation gate for pisti4 (one spring, no stagger — shorter than DEAL_ANIM_MS). */
+const DRAW_ANIM_MS = 550
 const TURN_MS = TURN_TIMER.TURN_MS
 /** Must stay > adapter heartbeat interval (15s) with room for a missed beat. */
 const HEARTBEAT_FORFEIT_MS = 45_000
@@ -177,6 +181,7 @@ function makeDebugMpEnd(): { gameState: GameState; mpState: MultiplayerState } {
     endedReason: 'completed',
     winnerUid: null,
     error: null,
+    mode: 'classic',
   }
   return { gameState, mpState }
 }
@@ -392,6 +397,7 @@ export default function App() {
   const [mpOverlayPhase, setMpOverlayPhase] = useState<'idle' | 'creating' | 'sharing' | 'waiting' | 'joining' | 'error'>('idle')
   const [inviteCopied, setInviteCopied] = useState(false)
   const [showCountdown, setShowCountdown] = useState(false)
+  const [modePicker, setModePicker] = useState<{ open: boolean; friend: FriendEntry | null }>({ open: false, friend: null })
   const [debugMpEnd, setDebugMpEnd] = useState<ReturnType<typeof makeDebugMpEnd> | null>(null)
   const [rivalry, setRivalry] = useState<RivalryStats | null>(null)
 
@@ -479,6 +485,12 @@ export default function App() {
   const playerScoreRef = useRef<HTMLSpanElement>(null)
   const opponentScoreRef = useRef<HTMLSpanElement>(null)
   const [flying, setFlying] = useState<FlyingCardState | null>(null)
+  /** Face-down deck→opponent-hand flight for pisti4 draws (separate from play throws). */
+  const [drawFlying, setDrawFlying] = useState<FlyingCardState | null>(null)
+  /** Hide the newest opponent card until the draw flight lands. */
+  const [pendingOppDraw, setPendingOppDraw] = useState(false)
+  /** Newest opponent card should appear instantly after a draw flight (no HUD spring). */
+  const [suppressOppDealIn, setSuppressOppDealIn] = useState(false)
   const [capture, setCapture] = useState<CaptureState | null>(null)
   const [scorePop, setScorePop] = useState<ScorePop | null>(null)
   const [pileHighlight, setPileHighlight] = useState(false)
@@ -487,6 +499,7 @@ export default function App() {
   const [dealing, setDealing] = useState(true)
   const captureResultRef = useRef<PlayResult | null>(null)
   const landTimerRef = useRef<number | null>(null)
+  const drawTimerRef = useRef<number | null>(null)
   const captureTimerRef = useRef<number | null>(null)
   const shakeTimerRef = useRef<number | null>(null)
   const scorePopTimerRef = useRef<number | null>(null)
@@ -512,10 +525,14 @@ export default function App() {
   // ── Transient state reset ─────────────────────────────────────────────────
   const resetTransient = useCallback(() => {
     if (landTimerRef.current !== null) { window.clearTimeout(landTimerRef.current); landTimerRef.current = null }
+    if (drawTimerRef.current !== null) { window.clearTimeout(drawTimerRef.current); drawTimerRef.current = null }
     if (captureTimerRef.current !== null) { window.clearTimeout(captureTimerRef.current); captureTimerRef.current = null }
     if (shakeTimerRef.current !== null) { window.clearTimeout(shakeTimerRef.current); shakeTimerRef.current = null }
     if (scorePopTimerRef.current !== null) { window.clearTimeout(scorePopTimerRef.current); scorePopTimerRef.current = null }
     setFlying(null)
+    setDrawFlying(null)
+    setPendingOppDraw(false)
+    setSuppressOppDealIn(false)
     setCapture(null)
     setScorePop(null)
     setPileHighlight(false)
@@ -530,6 +547,20 @@ export default function App() {
     const timer = window.setTimeout(() => setDealing(false), DEAL_ANIM_MS)
     return () => window.clearTimeout(timer)
   }, [state.dealSerial])
+
+  // ── Per-card draw animation pause (pisti4 only) ──────────────────────────
+  // Guards the very first render: only locks when drawSerial actually changes
+  // after mount, not on initial component mount where the value is already set.
+  const drawSerialMounted = useRef(false)
+  useEffect(() => {
+    if (!drawSerialMounted.current) {
+      drawSerialMounted.current = true
+      return
+    }
+    setDealing(true)
+    const timer = window.setTimeout(() => setDealing(false), DRAW_ANIM_MS)
+    return () => window.clearTimeout(timer)
+  }, [state.drawSerial])
 
   // ── Solo persistence ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -670,7 +701,7 @@ export default function App() {
     // Carry over match scores across rematches, start at 0-0 for a new match
     const games = isFirstMatch ? { player: 0, opponent: 0 } : gamesRef.current
 
-    log('Hydrating from seed', { seed: mpState.seed, moves: mpState.moves.length, games, localSeat: mpState.localSeat })
+    log('Hydrating from seed', { seed: mpState.seed, moves: mpState.moves.length, games, localSeat: mpState.localSeat, mode: mpState.mode })
     const hydrated = hydrateGameState(
       mpState.seed,
       mpState.moves,
@@ -678,6 +709,7 @@ export default function App() {
       mpState.firstSeat,
       games,
       mpState.round,
+      mpState.mode ?? 'classic',
     )
 
     resetTransient()
@@ -899,6 +931,7 @@ export default function App() {
       mpState.firstSeat,
       state.games,
       mpState.round,
+      mpState.mode ?? 'classic',
     )
     // Last move may not have landed on Firestore yet — wait for the next snapshot
     if (!hydrated.gameOver || !hydrated.scoreboard) return
@@ -1011,14 +1044,58 @@ export default function App() {
     setPileVisuals((prev) => ({ ...prev, [card.id]: land }))
   }, [])
 
+  /**
+   * Commit the play, then for pisti4 opponent draws launch a face-down card
+   * from the deck into their hand (hiding the newest hand slot until it lands).
+   */
+  const resolvePlayWithDrawAnim = useCallback(
+    (result: PlayResult) => {
+      // Deck still has the pre-commit size here — a non-empty deck means applyMove
+      // will draw one card back into the mover's hand in pisti4.
+      const shouldAnimateOppDraw =
+        state.mode === 'pisti4' && state.deck.length > 0 && result.who === 'opponent'
+
+      resolvePlay(result)
+
+      if (!shouldAnimateOppDraw) return
+
+      const fromEl = sideHudRef.current
+      const handEl = opponentHandRef.current?.querySelector(
+        '.opponent-area__hand',
+      ) as HTMLElement | null
+      if (!fromEl || !handEl) return
+
+      const from = fromEl.getBoundingClientRect()
+      const hand = handEl.getBoundingClientRect()
+      // Land where the new rightmost card will sit (current fan + one slot).
+      const overlap = OPP_CARD_WIDTH * 0.46
+      const nextLeft = hand.left + handEl.children.length * overlap
+      const target = new DOMRect(nextLeft, hand.top, OPP_CARD_WIDTH, hand.height)
+
+      const fly = createDeckDrawFlyingCard(from, target)
+      if (drawTimerRef.current !== null) window.clearTimeout(drawTimerRef.current)
+      setSuppressOppDealIn(true)
+      setPendingOppDraw(true)
+      setDrawFlying(fly)
+      drawTimerRef.current = window.setTimeout(() => {
+        drawTimerRef.current = null
+        setDrawFlying(null)
+        setPendingOppDraw(false)
+        // Keep skipDealIn long enough for the new OpponentCard to mount without a HUD spring.
+        window.setTimeout(() => setSuppressOppDealIn(false), 80)
+      }, fly.totalMs + 30)
+    },
+    [resolvePlay, state.mode, state.deck.length],
+  )
+
   const finishCapture = useCallback(() => {
     const result = captureResultRef.current
     captureResultRef.current = null
     setCapture(null)
     setPileHighlight(false)
     setPileVisuals({})
-    if (result) resolvePlay(result)
-  }, [resolvePlay])
+    if (result) resolvePlayWithDrawAnim(result)
+  }, [resolvePlayWithDrawAnim])
 
   const applyLanding = useCallback(
     (result: PlayResult, land: LandingResult) => {
@@ -1083,9 +1160,9 @@ export default function App() {
         return
       }
 
-      resolvePlay(result)
+      resolvePlayWithDrawAnim(result)
     },
-    [recordLanding, resolvePlay, finishCapture, getPileTarget],
+    [recordLanding, resolvePlayWithDrawAnim, finishCapture, getPileTarget],
   )
 
   const launchFlight = useCallback(
@@ -1133,7 +1210,7 @@ export default function App() {
   useEffect(() => {
     if (!isMpMode || mpState.phase !== 'playing') return
     if (state.phase !== 'idle' || state.turn !== 'opponent' || state.gameOver) return
-    if (flying || capture || dealing) return
+    if (flying || capture || dealing || drawFlying) return
 
     const nextIdx = appliedMovesRef.current
     if (nextIdx >= mpState.moves.length) return
@@ -1144,7 +1221,7 @@ export default function App() {
   }, [
     isMpMode, mpState.phase, mpState.moves,
     state.phase, state.turn, state.gameOver,
-    flying, capture, dealing,
+    flying, capture, dealing, drawFlying,
     triggerRemoteCardAnimation,
   ])
 
@@ -1233,10 +1310,10 @@ export default function App() {
 
   useEffect(() => {
     if (isMpMode) return
-    if (state.turn !== 'opponent' || state.phase !== 'idle' || state.gameOver || flying || capture || dealing) return
+    if (state.turn !== 'opponent' || state.phase !== 'idle' || state.gameOver || flying || capture || dealing || drawFlying) return
     const timer = window.setTimeout(triggerOpponentThrow, 650)
     return () => window.clearTimeout(timer)
-  }, [isMpMode, state.turn, state.phase, state.gameOver, flying, capture, dealing, triggerOpponentThrow, state.opponentHand.length])
+  }, [isMpMode, state.turn, state.phase, state.gameOver, flying, capture, dealing, drawFlying, triggerOpponentThrow, state.opponentHand.length])
 
   const mpTurnDeadline = isMpMode && mpState.phase === 'playing' ? mpState.turnDeadline : 0
   const localTurnDeadline = mpTurnDeadline && state.turn === 'player' && !state.gameOver ? mpTurnDeadline : 0
@@ -1248,7 +1325,7 @@ export default function App() {
   const handleTurnExpire = useCallback((): boolean => {
     if (leavingRef.current) return false
     if (!isMpMode || mpState.phase !== 'playing') return false
-    if (state.phase !== 'idle' || state.turn !== 'player' || state.gameOver || dealing) return false
+    if (state.phase !== 'idle' || state.turn !== 'player' || state.gameOver || dealing || drawFlying) return false
     if (flying || capture) return false
     if (state.playerHand.length === 0) return false
     if (mpState.turnDeadline && autoPlayedDeadlineRef.current === mpState.turnDeadline) return false
@@ -1274,14 +1351,14 @@ export default function App() {
     } else if (target) {
       applyLanding(result, { offsetX: 0, offsetY: 0, rotation: 0 })
     } else {
-      resolvePlay(result)
+      resolvePlayWithDrawAnim(result)
     }
 
     if (leavingRef.current || mpState.phase !== 'playing') return true
 
     publishMpCard(card.id)
     return true
-  }, [isMpMode, mpState.phase, mpState.turnDeadline, state.phase, state.turn, state.gameOver, state.playerHand, state.pile, dealing, flying, capture, playPlayerCard, getPileTarget, launchFlight, applyLanding, resolvePlay, publishMpCard])
+  }, [isMpMode, mpState.phase, mpState.turnDeadline, state.phase, state.turn, state.gameOver, state.playerHand, state.pile, dealing, flying, capture, drawFlying, playPlayerCard, getPileTarget, launchFlight, applyLanding, resolvePlayWithDrawAnim, publishMpCard])
 
   // Watchdog: HUD onExpire is one-shot and can fire while dealing/hydrating after a
   // refresh. Re-arm until autoplay succeeds for this deadline (incl. already-past).
@@ -1601,7 +1678,7 @@ export default function App() {
     resetToState(blankMpWaitingState())
   }, [leave, resetTransient, resetToState])
 
-  const handlePlayWithFriend = useCallback(async () => {
+  const handlePlayWithFriend = useCallback(async (gameMode: import('./game/engine').GameMode = 'classic') => {
     await ensureMpUsername()
     await beginNewMatch()
     resetSessionHands()
@@ -1613,13 +1690,13 @@ export default function App() {
     setInviteCopied(false)
     clearGame()
     clearContinueParam()
-    const code = await createRoom()
+    const code = await createRoom(gameMode)
     if (!code) {
       setMpOverlayPhase('error')
       track('mp_room_create_fail', { mode: 'mp_link', source: 'home' })
       return
     }
-    track('mp_room_create', { mode: 'mp_link', source: 'home' })
+    track('mp_room_create', { mode: 'mp_link', source: 'home', game_mode: gameMode })
     setMpOverlayPhase('sharing')
     setStarted(true)
     const shareResult = await shareInviteLink(code)
@@ -1629,7 +1706,7 @@ export default function App() {
   }, [ensureMpUsername, beginNewMatch, createRoom])
 
   const handleInviteFriend = useCallback(
-    async (friend: FriendEntry) => {
+    async (friend: FriendEntry, gameMode: import('./game/engine').GameMode = 'classic') => {
       setInvitingUid(friend.uid)
       try {
         await ensureMpUsername()
@@ -1645,7 +1722,7 @@ export default function App() {
           setChallengedName(friend.name)
           outgoingRequestIdRef.current = null
           setMpOverlayPhase('creating')
-          const code = await createRoom()
+          const code = await createRoom(gameMode)
           const matchId = mpAdapter.getActiveMatchId()
           if (!code || !matchId) {
             setMpOverlayPhase('error')
@@ -1653,10 +1730,10 @@ export default function App() {
             track('mp_room_create_fail', { mode: 'mp_challenge', source: 'friends' })
             return
           }
-          track('mp_room_create', { mode: 'mp_challenge', source: 'friends' })
+          track('mp_room_create', { mode: 'mp_challenge', source: 'friends', game_mode: gameMode })
           setStarted(true)
           try {
-            const req = await sendChallenge(friend.uid, matchId, code)
+            const req = await sendChallenge(friend.uid, matchId, code, gameMode)
             outgoingRequestIdRef.current = req.id
             setMpOverlayPhase('waiting')
             track('challenge_send', { source: 'friends' })
@@ -1673,13 +1750,13 @@ export default function App() {
         setChallengedName(null)
         outgoingRequestIdRef.current = null
         setMpOverlayPhase('creating')
-        const code = await createRoom()
+        const code = await createRoom(gameMode)
         if (!code) {
           setMpOverlayPhase('error')
           track('mp_room_create_fail', { mode: 'mp_link', source: 'friends' })
           return
         }
-        track('mp_room_create', { mode: 'mp_link', source: 'friends' })
+        track('mp_room_create', { mode: 'mp_link', source: 'friends', game_mode: gameMode })
         setMpOverlayPhase('sharing')
         setStarted(true)
         const shareResult = await shareInviteLink(code)
@@ -1856,7 +1933,7 @@ export default function App() {
     [state.playerCollected, state.opponentCollected, state.playerPisti, state.opponentPisti, state.playerDoublePisti, state.opponentDoublePisti],
   )
 
-  const canHint = canPlayerAct && !flying && !capture && !dealing
+  const canHint = canPlayerAct && !flying && !capture && !dealing && !drawFlying
   const topCard = state.pile.length > 0 ? state.pile[state.pile.length - 1] : null
   const matchRank = canHint && topCard ? topCard.rank : null
   const playerHasJack = canHint && state.pile.length > 0 && state.playerHand.some((c) => c.rank === 'J')
@@ -2000,7 +2077,7 @@ export default function App() {
         </div>
       )}
 
-      <div className={`opponent-wrap${dealing ? ' opponent-wrap--dealing' : ''}`} ref={opponentHandRef}>
+      <div className={`opponent-wrap${dealing || drawFlying ? ' opponent-wrap--dealing' : ''}`} ref={opponentHandRef}>
         <Hud
           side="top"
           name={opponentName}
@@ -2012,7 +2089,15 @@ export default function App() {
           onScoreClick={handleOpponentScoreClick}
           turnDeadline={remoteTurnDeadline}
         />
-        <OpponentArea handCount={state.opponentHand.length} dealFromRef={sideHudRef} />
+        <OpponentArea
+          handCount={state.opponentHand.length - (pendingOppDraw ? 1 : 0)}
+          dealFromRef={sideHudRef}
+          skipDealInIndex={
+            suppressOppDealIn && !pendingOppDraw
+              ? state.opponentHand.length - 1
+              : null
+          }
+        />
       </div>
 
       <div className="table-area">
@@ -2022,7 +2107,7 @@ export default function App() {
           visuals={pileVisuals}
           highlight={pileHighlight}
           highlightTopRank={highlightPileTop}
-          showPlayPrompt={canPlayerAct && !flying && !capture && !dealing}
+          showPlayPrompt={canPlayerAct && !flying && !capture && !dealing && !drawFlying}
           dealFromRef={sideHudRef}
           capturing={!!capture}
         />
@@ -2031,7 +2116,7 @@ export default function App() {
       <div className="player-area">
         <PlayerHand
           cards={state.playerHand}
-          disabled={!canPlayerAct || !!flying || !!capture || dealing}
+          disabled={!canPlayerAct || !!flying || !!capture || dealing || !!drawFlying}
           matchRank={matchRank}
           dealFromRef={sideHudRef}
           onReorder={reorderPlayerHand}
@@ -2108,7 +2193,7 @@ export default function App() {
         )}
       </div>
 
-      <FlyingCardLayer flying={flying} />
+      <FlyingCardLayer flying={flying ?? drawFlying} />
       <CaptureLayer capture={capture} visuals={pileVisuals} />
       <ScorePopLayer pop={scorePop} />
 
@@ -2154,8 +2239,8 @@ export default function App() {
         friendsLoading={friendsLoading}
         invitingUid={invitingUid}
         onStart={handleStart}
-        onPlayWithFriend={() => void handlePlayWithFriend()}
-        onInviteFriend={(friend) => void handleInviteFriend(friend)}
+        onPlayWithFriend={() => setModePicker({ open: true, friend: null })}
+        onInviteFriend={(friend) => setModePicker({ open: true, friend })}
         onRemoveFriend={(uid) => void removeFriend(uid)}
         onAddFriend={addFriend}
         onEditName={() => setEditingName(true)}
@@ -2216,7 +2301,21 @@ export default function App() {
         playerName={playerName}
         opponentName={mpState.opponentName ?? 'Rakip'}
         games={state.games}
+        mode={mpState.mode ?? 'classic'}
         onComplete={handleCountdownComplete}
+      />
+
+      <GameModeDialog
+        open={modePicker.open}
+        onConfirm={(gameMode) => {
+          setModePicker({ open: false, friend: null })
+          if (modePicker.friend) {
+            void handleInviteFriend(modePicker.friend, gameMode)
+          } else {
+            void handlePlayWithFriend(gameMode)
+          }
+        }}
+        onClose={() => setModePicker({ open: false, friend: null })}
       />
 
       <NamePromptModal

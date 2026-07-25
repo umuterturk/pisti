@@ -10,15 +10,22 @@ import {
 interface OpponentAreaProps {
   handCount: number
   dealFromRef?: RefObject<HTMLDivElement | null>
+  /**
+   * When set, the card at this index appears instantly (no HUD deal-in).
+   * Used after a pisti4 draw flight has already delivered the card visually.
+   */
+  skipDealInIndex?: number | null
 }
 
 // A single face-down opponent card that flies in from the centre HUD.
 const OpponentCard = memo(function OpponentCard({
   index,
   dealFromRef,
+  skipDealIn,
 }: {
   index: number
   dealFromRef?: RefObject<HTMLDivElement | null>
+  skipDealIn?: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const x = useMotionValue(0)
@@ -26,6 +33,10 @@ const OpponentCard = memo(function OpponentCard({
   const opacity = useMotionValue(0)
 
   useLayoutEffect(() => {
+    if (skipDealIn) {
+      opacity.set(1)
+      return
+    }
     const hudEl = dealFromRef?.current
     const el = ref.current
     if (!hudEl || !el) {
@@ -53,8 +64,8 @@ const OpponentCard = memo(function OpponentCard({
 })
 
 // Opponent's hand: bigger backs, fanned and cropped at the top edge. New cards
-// are dealt in from the centre HUD.
-function OpponentAreaComponent({ handCount, dealFromRef }: OpponentAreaProps) {
+// are dealt in from the centre HUD (batch deals) unless skipDealInIndex says otherwise.
+function OpponentAreaComponent({ handCount, dealFromRef, skipDealInIndex = null }: OpponentAreaProps) {
   const overlap = OPP_CARD_WIDTH * 0.46
   const totalWidth = OPP_CARD_WIDTH + overlap * Math.max(0, handCount - 1)
   const visibleHeight = Math.round(OPP_CARD_HEIGHT * OPP_VISIBLE_RATIO)
@@ -79,7 +90,11 @@ function OpponentAreaComponent({ handCount, dealFromRef }: OpponentAreaProps) {
       <div className="opponent-area__hand" style={handStyle}>
         {cards.map(({ index, style }) => (
           <div key={index} className="opponent-area__card" style={style}>
-            <OpponentCard index={index} dealFromRef={dealFromRef} />
+            <OpponentCard
+              index={index}
+              dealFromRef={dealFromRef}
+              skipDealIn={skipDealInIndex === index}
+            />
           </div>
         ))}
       </div>

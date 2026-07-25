@@ -98,8 +98,8 @@ export function useFriends(friends: FriendsPort, enabled: boolean) {
   )
 
   const sendChallenge = useCallback(
-    async (toUid: string, matchId: string, inviteCode: string) =>
-      friends.sendGameRequest(toUid, matchId, inviteCode),
+    async (toUid: string, matchId: string, inviteCode: string, mode?: import('../game/engine').GameMode) =>
+      friends.sendGameRequest(toUid, matchId, inviteCode, mode),
     [friends],
   )
 

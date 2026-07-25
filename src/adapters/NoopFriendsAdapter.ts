@@ -38,6 +38,7 @@ export class NoopFriendsAdapter implements FriendsPort {
     _toUid: string,
     _matchId: string,
     _inviteCode: string,
+    _mode?: import('../game/engine').GameMode,
   ): Promise<GameRequest> {
     throw new Error('Friends unavailable')
   }

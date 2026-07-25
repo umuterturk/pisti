@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MultiplayerPort } from '../ports'
 import type { PistiMatchSnapshot, EmojiReaction } from '../multiplayer/types'
+import type { GameMode } from '../game/engine'
 
 export type MpPhase =
   | 'idle'
@@ -31,6 +32,7 @@ export interface MultiplayerState {
   winnerUid?: string | null
   error: string | null
   reactions?: EmojiReaction[]
+  mode: GameMode | null
 }
 
 const INITIAL: MultiplayerState = {
@@ -52,6 +54,7 @@ const INITIAL: MultiplayerState = {
   opponentWantsRematch: false,
   error: null,
   reactions: [],
+  mode: null,
 }
 
 /** Prefer a future deadline over a dead/zero one so lagging snaps don't kill the HUD timer. */
@@ -111,6 +114,7 @@ export function useMultiplayer(mp: MultiplayerPort, displayName: string) {
         endedReason: snap.endedReason,
         winnerUid: snap.winnerUid,
         reactions: snap.reactions ?? [],
+        mode: snap.mode,
       }
 
       if (snap.status === 'waiting') {
@@ -149,12 +153,12 @@ export function useMultiplayer(mp: MultiplayerPort, displayName: string) {
     return unsub
   }, [mp, handleSnapshot, state.matchId])
 
-  const createRoom = useCallback(async (): Promise<string | null> => {
+  const createRoom = useCallback(async (mode: GameMode = 'classic'): Promise<string | null> => {
     update({ phase: 'creating', error: null })
     try {
-      const code = await mp.createRoom()
+      const code = await mp.createRoom(mode)
       const matchId = mp.getActiveMatchId()
-      update({ phase: 'waiting', inviteCode: code, matchId })
+      update({ phase: 'waiting', inviteCode: code, matchId, mode })
       return code
     } catch (e) {
       update({ phase: 'idle', error: e instanceof Error ? e.message : String(e) })

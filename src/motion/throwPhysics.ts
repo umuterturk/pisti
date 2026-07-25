@@ -83,3 +83,18 @@ export function computeOpponentThrow(): ThrowOutput {
     impactStrength: 0.55,
   }
 }
+
+/** Short arc from the deck into a hand (pisti4 single-card draw). */
+export function computeDeckDraw(): ThrowOutput {
+  return {
+    duration: randomInRange(0.28, 0.36),
+    spin: randomSigned(10),
+    overshootX: randomSigned(6),
+    overshootY: randomSigned(4),
+    landOffsetX: 0,
+    landOffsetY: 0,
+    landRotation: randomSigned(8),
+    slideDistance: 0,
+    impactStrength: 0.3,
+  }
+}

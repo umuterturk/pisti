@@ -1,10 +1,11 @@
 import type { PistiMatchSnapshot } from '../multiplayer/types'
+import type { GameMode } from '../game/engine'
 
 /** Multiplayer room / move / presence contract. */
 export interface MultiplayerPort {
   setDisplayName(name: string): void
   subscribe(handler: (snap: PistiMatchSnapshot | null) => void): () => void
-  createRoom(): Promise<string>
+  createRoom(mode?: GameMode): Promise<string>
   joinRoom(code: string): Promise<void>
   rejoinMatch(matchId: string): Promise<void>
   playMove(cardId: string, moveSeq: number, nextDeadline: number): Promise<void>
@@ -47,6 +48,7 @@ export interface GameRequest {
   inviteCode: string
   status: GameRequestStatus
   createdAt: number
+  mode: GameMode
 }
 
 export interface UserLifetimeStats {
@@ -88,7 +90,7 @@ export interface FriendsPort {
     resultId?: string,
     starterUid?: string | null,
   ): Promise<void>
-  sendGameRequest(toUid: string, matchId: string, inviteCode: string): Promise<GameRequest>
+  sendGameRequest(toUid: string, matchId: string, inviteCode: string, mode?: GameMode): Promise<GameRequest>
   subscribeIncomingRequests(handler: (request: GameRequest | null) => void): () => void
   acceptGameRequest(requestId: string): Promise<void>
   declineGameRequest(requestId: string): Promise<void>

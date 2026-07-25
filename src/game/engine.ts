@@ -2,6 +2,7 @@ import type { Card } from './cards'
 import { checkCapture, computeScoreboard, type Scoreboard } from './rules'
 
 export type Turn = 'player' | 'opponent'
+export type GameMode = 'classic' | 'pisti4'
 
 export const HAND_SIZE = 4
 
@@ -50,11 +51,16 @@ export function isTerminal(s: SimState): boolean {
 /**
  * Apply a single card play by `s.turn`. Mirrors the rule math in
  * `useGame.commit`: capture (with pişti / double-pişti counting), otherwise
- * stack onto the pile; refill both hands from the deck once they are empty; flip
- * the turn. Returns whether a refill happened so the UI layer can bump its deal
- * animation serial.
+ * stack onto the pile; refill both hands from the deck once they are empty
+ * (classic) or immediately draw one card back into the mover's hand (pisti4);
+ * flip the turn. Returns whether a batch refill or a single draw happened so
+ * the UI layer can bump its deal/draw animation serial.
  */
-export function applyMove(s: SimState, cardId: string): { next: SimState; refilled: boolean } {
+export function applyMove(
+  s: SimState,
+  cardId: string,
+  mode: GameMode = 'classic',
+): { next: SimState; refilled: boolean; drew: boolean } {
   const who = s.turn
   const hand = who === 'player' ? s.playerHand : s.opponentHand
   const card = hand.find((c) => c.id === cardId)
@@ -93,20 +99,33 @@ export function applyMove(s: SimState, cardId: string): { next: SimState; refill
   let opponentHand = who === 'opponent' ? hand.filter((c) => c.id !== cardId) : s.opponentHand
 
   let refilled = false
-  if (playerHand.length === 0 && opponentHand.length === 0 && deck.length > 0) {
-    // Absolute seat order: seat 0 always gets the next 4, seat 1 the following 4.
-    // Map into local player/opponent based on localSeat so both clients stay in sync.
-    const seat0Hand = deck.slice(0, HAND_SIZE)
-    const seat1Hand = deck.slice(HAND_SIZE, HAND_SIZE * 2)
-    const seat = s.localSeat ?? 0
-    playerHand = seat === 0 ? seat0Hand : seat1Hand
-    opponentHand = seat === 0 ? seat1Hand : seat0Hand
-    deck = deck.slice(HAND_SIZE * 2)
-    refilled = true
+  let drew = false
+
+  if (mode === 'classic') {
+    if (playerHand.length === 0 && opponentHand.length === 0 && deck.length > 0) {
+      // Absolute seat order: seat 0 always gets the next 4, seat 1 the following 4.
+      // Map into local player/opponent based on localSeat so both clients stay in sync.
+      const seat0Hand = deck.slice(0, HAND_SIZE)
+      const seat1Hand = deck.slice(HAND_SIZE, HAND_SIZE * 2)
+      const seat = s.localSeat ?? 0
+      playerHand = seat === 0 ? seat0Hand : seat1Hand
+      opponentHand = seat === 0 ? seat1Hand : seat0Hand
+      deck = deck.slice(HAND_SIZE * 2)
+      refilled = true
+    }
+  } else if (mode === 'pisti4' && deck.length > 0) {
+    // Draw the top card of the deck into the hand of whoever just played,
+    // keeping their hand at HAND_SIZE until the deck is exhausted.
+    const [drawn, ...rest] = deck
+    if (who === 'player') playerHand = [...playerHand, drawn]
+    else opponentHand = [...opponentHand, drawn]
+    deck = rest
+    drew = true
   }
 
   return {
     refilled,
+    drew,
     next: {
       deck,
       playerHand,

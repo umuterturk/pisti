@@ -4,8 +4,11 @@ import {
   CARD_WIDTH,
   HAND_CARD_HEIGHT,
   HAND_CARD_WIDTH,
+  OPP_CARD_HEIGHT,
+  OPP_CARD_WIDTH,
 } from '../motion/params'
 import {
+  computeDeckDraw,
   computeOpponentThrow,
   computeThrow,
   type ThrowOutput,
@@ -108,5 +111,38 @@ export function createOpponentFlyingCard(
     physics,
     totalMs: (physics.duration + SETTLE_SEC) * 1000,
     landing: landingFrom(physics),
+  }
+}
+
+/**
+ * Face-down card flying from the deck (side HUD) into the opponent's hand.
+ * Used for pisti4 single-card draws — stays face-down the whole way.
+ */
+export function createDeckDrawFlyingCard(
+  fromRect: DOMRect,
+  targetRect: DOMRect,
+): FlyingCardState {
+  const physics = computeDeckDraw()
+  const startX = fromRect.left + fromRect.width / 2 - OPP_CARD_WIDTH / 2
+  const startY = fromRect.top + fromRect.height / 2 - OPP_CARD_HEIGHT / 2
+  const targetX = targetRect.left + targetRect.width / 2 - OPP_CARD_WIDTH / 2
+  const targetY = targetRect.top + targetRect.height / 2 - OPP_CARD_HEIGHT / 2
+
+  return {
+    id: `deck-draw-${Date.now()}`,
+    // Placeholder — never shown face-up.
+    card: { id: 'deck-draw', suit: 'spades', rank: 'A' },
+    startX,
+    startY,
+    targetX,
+    targetY,
+    faceDown: true,
+    width: OPP_CARD_WIDTH,
+    height: OPP_CARD_HEIGHT,
+    landScale: 1,
+    physics,
+    totalMs: (physics.duration + SETTLE_SEC) * 1000,
+    // Settle flush into the hand slot — no pile-style scatter.
+    landing: { offsetX: 0, offsetY: 0, rotation: physics.landRotation },
   }
 }

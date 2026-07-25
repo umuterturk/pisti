@@ -1,12 +1,14 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { vibrate, TAP } from '../game/haptics'
+import type { GameMode } from '../game/engine'
 
 interface Props {
   open: boolean
   playerName: string
   opponentName: string
   games: { player: number; opponent: number }
+  mode?: GameMode
   onComplete: () => void
 }
 
@@ -19,7 +21,7 @@ const BEATS: { value: Beat; at: number }[] = [
   { value: 'go', at: 2550 },
 ]
 
-export function CountdownScreen({ open, playerName, opponentName, games, onComplete }: Props) {
+export function CountdownScreen({ open, playerName, opponentName, games, mode = 'classic', onComplete }: Props) {
   const [beat, setBeat] = useState<Beat>(3)
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
@@ -88,6 +90,17 @@ export function CountdownScreen({ open, playerName, opponentName, games, onCompl
             >
               {isRematch ? 'RÖVANŞ' : 'MAÇ BAŞLIYOR'}
             </motion.p>
+
+            {mode === 'pisti4' && (
+              <motion.div
+                className="countdown__mode-badge"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 340, damping: 24, delay: 0.15 }}
+              >
+                PİŞTİ4
+              </motion.div>
+            )}
 
             {/* VS fighters */}
             <div className="countdown__vs-row">
@@ -158,7 +171,9 @@ export function CountdownScreen({ open, playerName, opponentName, games, onCompl
               animate={{ opacity: 0.55 }}
               transition={{ delay: 0.35 }}
             >
-              Kartlar dağılıyor…
+              {mode === 'pisti4'
+                ? 'Her karttan sonra desteden yeni kart gelecek!'
+                : 'Kartlar dağılıyor…'}
             </motion.p>
           </div>
         </motion.div>

@@ -21,6 +21,7 @@ import {
 import { friendRivalPairId } from '../friends/pairId'
 import type { PistiMatchDoc, PistiMatchSnapshot } from '../multiplayer/types'
 import type { MultiplayerPort } from '../ports'
+import type { GameMode } from '../game/engine'
 import { TURN_TIMER } from '../app/TurnTimer'
 
 const INVITE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -106,6 +107,7 @@ function parseSnapshot(
     endedReason: data.endedReason,
     winnerUid: data.winnerUid,
     reactions: data.reactions ?? [],
+    mode: (data.mode ?? 'classic') as GameMode,
   }
 }
 
@@ -204,7 +206,7 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
     }
   }
 
-  async createRoom(): Promise<string> {
+  async createRoom(mode: GameMode = 'classic'): Promise<string> {
     const uid = await this.getUid()
     const db = getFirebaseDb()
     const newRef = doc(collection(db, MATCHES_COLLECTION))
@@ -223,6 +225,7 @@ export class FirebaseMultiplayerAdapter implements MultiplayerPort {
       moves: [],
       moveSeq: 0,
       turnDeadline: 0,
+      mode,
       players: {
         [uid]: {
           name: this.playerName(uid),

@@ -98,7 +98,7 @@ export function CountdownScreen({ open, playerName, opponentName, games, mode = 
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: 'spring', stiffness: 340, damping: 24, delay: 0.15 }}
               >
-                PİŞTİ4
+                DAİMA 4
               </motion.div>
             )}
 

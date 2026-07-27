@@ -1067,10 +1067,9 @@ export default function App() {
 
       const from = fromEl.getBoundingClientRect()
       const hand = handEl.getBoundingClientRect()
-      // Land where the new rightmost card will sit (current fan + one slot).
+      // Land on the leftmost seat (fan is centered, so growth shifts left by half a slot).
       const overlap = OPP_CARD_WIDTH * 0.46
-      const nextLeft = hand.left + handEl.children.length * overlap
-      const target = new DOMRect(nextLeft, hand.top, OPP_CARD_WIDTH, hand.height)
+      const target = new DOMRect(hand.left - overlap / 2, hand.top, OPP_CARD_WIDTH, hand.height)
 
       const fly = createDeckDrawFlyingCard(from, target)
       if (drawTimerRef.current !== null) window.clearTimeout(drawTimerRef.current)
@@ -2095,7 +2094,7 @@ export default function App() {
           dealFromRef={sideHudRef}
           skipDealInIndex={
             suppressOppDealIn && !pendingOppDraw
-              ? state.opponentHand.length - 1
+              ? 0
               : null
           }
         />

@@ -56,12 +56,14 @@ function sumCardPoints(cards: Card[]): number {
   return cards.reduce((total, card) => total + cardPoints(card), 0)
 }
 
-export type ScoreBreakdownKind = 'doublePisti' | 'pisti' | 'twoClubs' | 'tenDiamonds' | 'other'
+export type ScoreBreakdownKind = 'doublePisti' | 'pisti' | 'twoClubs' | 'tenDiamonds' | 'jacks' | 'aces' | 'other'
 
 export interface ScoreBreakdownItem {
   kind: ScoreBreakdownKind
   label: string
   points: number
+  /** Number of cards contributing to this line (used for J / A rows). */
+  count?: number
 }
 
 /**
@@ -76,8 +78,11 @@ export function scoreBreakdown(
 ): { items: ScoreBreakdownItem[]; total: number } {
   const tenDiamonds = cards.find((c) => c.rank === '10' && c.suit === 'diamonds')
   const twoClubs = cards.find((c) => c.rank === '2' && c.suit === 'clubs')
+  const jackCards = cards.filter((c) => c.rank === 'J')
+  const aceCards = cards.filter((c) => c.rank === 'A')
   const otherPoints = cards.reduce((sum, card) => {
     if (card === tenDiamonds || card === twoClubs) return sum
+    if (card.rank === 'J' || card.rank === 'A') return sum
     return sum + cardPoints(card)
   }, 0)
 
@@ -100,7 +105,9 @@ export function scoreBreakdown(
   if (tenDiamonds) {
     items.push({ kind: 'tenDiamonds', label: '', points: cardPoints(tenDiamonds) })
   }
-  if (otherPoints > 0) items.push({ kind: 'other', label: 'Diğer toplananlar', points: otherPoints })
+  items.push({ kind: 'jacks', label: '', points: jackCards.length, count: jackCards.length })
+  items.push({ kind: 'aces', label: '', points: aceCards.length, count: aceCards.length })
+  if (otherPoints > 0) items.push({ kind: 'other', label: 'Diğer', points: otherPoints })
 
   return { items, total: items.reduce((sum, item) => sum + item.points, 0) }
 }

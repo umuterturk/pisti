@@ -73,7 +73,8 @@ function RoundColumn({
       pistiCount,
       ten: items.find((i) => i.kind === 'tenDiamonds')?.points ?? 0,
       two: items.find((i) => i.kind === 'twoClubs')?.points ?? 0,
-      other: items.find((i) => i.kind === 'other')?.points ?? 0,
+      jacks: items.find((i) => i.kind === 'jacks') ?? { points: 0, count: 0 },
+      aces: items.find((i) => i.kind === 'aces') ?? { points: 0, count: 0 },
     }
   }, [cards, side])
 
@@ -100,9 +101,13 @@ function RoundColumn({
           <span className="mp-end__card-badge">2♣</span>
           <span>{detail.two}</span>
         </li>
-        <li>
-          <span>Diğer</span>
-          <span>{detail.other}</span>
+        <li className="mp-end__detail-row mp-end__detail-row--jacks">
+          <span className="mp-end__card-badge">J</span>
+          <span>{detail.jacks.points}</span>
+        </li>
+        <li className="mp-end__detail-row mp-end__detail-row--aces">
+          <span className="mp-end__card-badge">A</span>
+          <span>{detail.aces.points}</span>
         </li>
         <li>
           <span>Çoğunluk</span>

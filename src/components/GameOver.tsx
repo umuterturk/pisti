@@ -63,7 +63,8 @@ function ScoreColumn({
   )
   const tenDiamonds = items.find((i) => i.kind === 'tenDiamonds')?.points ?? 0
   const twoClubs = items.find((i) => i.kind === 'twoClubs')?.points ?? 0
-  const other = items.find((i) => i.kind === 'other')?.points ?? 0
+  const jacks = items.find((i) => i.kind === 'jacks') ?? { points: 0, count: 0 }
+  const aces = items.find((i) => i.kind === 'aces') ?? { points: 0, count: 0 }
 
   return (
     <div className={`game-over__col game-over__col--${accent}${isWinner ? ' game-over__col--winner' : ''}`}>
@@ -85,9 +86,13 @@ function ScoreColumn({
           <span className="game-over__badge">2♣</span>
           <span className="game-over__row-value">{twoClubs}</span>
         </motion.li>
-        <motion.li variants={lineVariants}>
-          <span>Diğer</span>
-          <span>{other}</span>
+        <motion.li className="game-over__row game-over__row--jacks" variants={lineVariants}>
+          <span className="game-over__badge">J</span>
+          <span className="game-over__row-value">{jacks.points}</span>
+        </motion.li>
+        <motion.li className="game-over__row game-over__row--aces" variants={lineVariants}>
+          <span className="game-over__badge">A</span>
+          <span className="game-over__row-value">{aces.points}</span>
         </motion.li>
         <motion.li variants={lineVariants}>
           <span>

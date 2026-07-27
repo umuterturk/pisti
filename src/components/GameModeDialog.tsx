@@ -19,7 +19,7 @@ const MODES: ModeOption[] = [
   },
   {
     id: 'pisti4',
-    name: 'Pişti4',
+    name: 'Daima 4',
     tag: 'YENİ',
     blurb: 'Oynadığın her kartın yerine desteden anında yeni bir kart gelir. Elin hep 4 kart!',
   },

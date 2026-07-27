@@ -18,6 +18,8 @@ const KIND_CLASS: Record<ScoreBreakdownKind, string> = {
   pisti: 'pisti',
   twoClubs: 'two-clubs',
   tenDiamonds: 'ten-diamonds',
+  jacks: 'jacks',
+  aces: 'aces',
   other: 'other',
 }
 
@@ -26,6 +28,8 @@ const KIND_BADGE: Record<ScoreBreakdownKind, string> = {
   pisti: 'P',
   twoClubs: '2♣',
   tenDiamonds: '10♦',
+  jacks: 'J',
+  aces: 'A',
   other: '+',
 }
 
@@ -91,11 +95,14 @@ export function ScoreInfoDialog({
               >
                 {items.map((item) => (
                   <motion.li
-                    key={item.label}
+                    key={item.kind}
                     className={`score-info__row score-info__row--${KIND_CLASS[item.kind]}`}
                     variants={rowVariants}
                   >
-                    <span className="score-info__badge">{KIND_BADGE[item.kind]}</span>
+                    <span className="score-info__badge">
+                      {KIND_BADGE[item.kind]}
+                      {item.count !== undefined && item.count > 1 ? ` ×${item.count}` : ''}
+                    </span>
                     <span className="score-info__label">{item.label}</span>
                     <span className="score-info__value">+{item.points}</span>
                   </motion.li>

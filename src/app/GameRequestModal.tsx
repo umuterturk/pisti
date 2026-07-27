@@ -35,7 +35,7 @@ export function GameRequestModal({ request, onAccept, onDecline }: Props) {
           </h2>
           <p className="game-request__message">
             <strong>{request.fromName}</strong> seni{' '}
-            {request.mode === 'pisti4' ? <strong>Pişti4</strong> : 'Pişti'} oynamaya davet ediyor.
+            {request.mode === 'pisti4' ? <strong>Daima 4</strong> : 'Pişti'} oynamaya davet ediyor.
           </p>
           <div className="game-request__actions">
             <button type="button" className="game-request__decline" onClick={onDecline}>

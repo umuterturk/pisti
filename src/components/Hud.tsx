@@ -7,8 +7,8 @@ const TEXTS = [
   'Gibi Gibi!',
   'Şans!',
   'Tabiii!',
-  'Yok Artıkk!',
-  'Hoppaa!',
+  'Yok Artık!',
+  'İnsaf!',
   'Haydaaa!',
 ] as const
 const REACT_COOLDOWN_MS = 3_000
@@ -146,7 +146,12 @@ function HudComponent({
 }: HudProps) {
   const initial = name.charAt(0).toUpperCase()
   const timer = useTurnTimer(turnDeadline, onTurnExpire)
-  const urgencyClass = timer.urgency ? ` hud__badge--timer hud__badge--${timer.urgency}` : ''
+  // Multiplayer keeps the chronometer footprint always; only the arc/urgency
+  // change while counting. Solo stays the compact badge unless a timer runs.
+  const showTimerChrome = isMultiplayer || timer.active
+  const urgencyClass = showTimerChrome
+    ? ` hud__badge--timer${timer.urgency ? ` hud__badge--${timer.urgency}` : ' hud__badge--timer-idle'}`
+    : ''
 
   const showReact = isMultiplayer && side === 'bottom'
 
@@ -281,8 +286,12 @@ function HudComponent({
         onClick={onScoreClick}
         aria-label="Puanlamayı göster"
       >
-        {timer.active && (
-          <HudTimerRing dashOffset={timer.dashOffset} urgency={timer.urgency} />
+        {showTimerChrome && (
+          <HudTimerRing
+            dashOffset={timer.dashOffset}
+            urgency={timer.urgency}
+            disabled={!timer.active}
+          />
         )}
         <RollingScore value={score} className="hud__score" innerRef={scoreRef} />
         <span className="hud__cards">

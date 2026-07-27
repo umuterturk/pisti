@@ -83,17 +83,20 @@ export const TURN_TIMER = { TURN_MS, SIZE, STROKE, RADIUS, CIRCUMFERENCE }
 export function HudTimerRing({
   dashOffset,
   urgency,
+  disabled = false,
 }: {
   dashOffset: number
   urgency: TimerUrgency
+  /** Idle/disabled track only — same footprint as an active countdown. */
+  disabled?: boolean
 }) {
-  if (!urgency) return null
+  if (!urgency && !disabled) return null
   const stroke =
     urgency === 'danger' ? '#ff5252' : urgency === 'warn' ? '#ffd54f' : '#7CFF9A'
 
   return (
     <svg
-      className="hud__timer-ring"
+      className={`hud__timer-ring${disabled ? ' hud__timer-ring--disabled' : ''}`}
       width={SIZE}
       height={SIZE}
       viewBox={`0 0 ${SIZE} ${SIZE}`}
@@ -112,21 +115,23 @@ export function HudTimerRing({
         cy={SIZE / 2}
         r={RADIUS}
         fill="none"
-        stroke="rgba(255,255,255,0.22)"
+        stroke={disabled ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.22)'}
         strokeWidth={STROKE}
       />
-      <circle
-        className="hud__timer-arc"
-        cx={SIZE / 2}
-        cy={SIZE / 2}
-        r={RADIUS}
-        fill="none"
-        stroke={stroke}
-        strokeWidth={STROKE}
-        strokeLinecap="round"
-        strokeDasharray={CIRCUMFERENCE}
-        strokeDashoffset={dashOffset}
-      />
+      {!disabled && urgency && (
+        <circle
+          className="hud__timer-arc"
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          stroke={stroke}
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={dashOffset}
+        />
+      )}
     </svg>
   )
 }

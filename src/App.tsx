@@ -2088,6 +2088,7 @@ export default function App() {
           scoreRef={opponentScoreRef}
           onScoreClick={handleOpponentScoreClick}
           turnDeadline={remoteTurnDeadline}
+          isMultiplayer={isMpMode}
         />
         <OpponentArea
           handCount={state.opponentHand.length - (pendingOppDraw ? 1 : 0)}

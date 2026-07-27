@@ -114,11 +114,11 @@ export function applyMove(
       refilled = true
     }
   } else if (mode === 'pisti4' && deck.length > 0) {
-    // Draw the top card of the deck into the hand of whoever just played,
-    // keeping their hand at HAND_SIZE until the deck is exhausted.
+    // Draw the top card of the deck into the hand of whoever just played
+    // (leftmost slot), keeping their hand at HAND_SIZE until the deck is exhausted.
     const [drawn, ...rest] = deck
-    if (who === 'player') playerHand = [...playerHand, drawn]
-    else opponentHand = [...opponentHand, drawn]
+    if (who === 'player') playerHand = [drawn, ...playerHand]
+    else opponentHand = [drawn, ...opponentHand]
     deck = rest
     drew = true
   }

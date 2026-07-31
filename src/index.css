@@ -281,8 +281,12 @@ textarea {
   backdrop-filter: none;
 }
 
-.hud__badge:active {
+.hud__badge:active:not(.hud__badge--static) {
   transform: scale(0.94);
+}
+
+.hud__badge--static {
+  cursor: default;
 }
 
 /* Opponent badge overflows downward, player badge upward — both toward the table. */

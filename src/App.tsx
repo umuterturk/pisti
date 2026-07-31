@@ -1879,11 +1879,7 @@ export default function App() {
     resetSessionHands()
   }, [resetTransient, leave, cancelOutgoingRequest, clearPresence, mpState.phase])
 
-  // ── Score info ─────────────────────────────────────────────────────────────
-  const handleOpponentScoreClick = useCallback(() => {
-    track('score_info_open', { side: 'opponent', mode: getPlayMode() })
-    setScoreInfoSide('opponent')
-  }, [])
+  // ── Score info (player only — opponent collected cards stay hidden) ─────────
   const handlePlayerScoreClick = useCallback(() => {
     track('score_info_open', { side: 'player', mode: getPlayMode() })
     setScoreInfoSide('player')
@@ -2085,7 +2081,6 @@ export default function App() {
           active={state.turn === 'opponent'}
           thinking={opponentThinking}
           scoreRef={opponentScoreRef}
-          onScoreClick={handleOpponentScoreClick}
           turnDeadline={remoteTurnDeadline}
           isMultiplayer={isMpMode}
         />
@@ -2272,10 +2267,10 @@ export default function App() {
 
       <ScoreInfoDialog
         open={scoreInfoSide !== null}
-        name={scoreInfoSide === 'opponent' ? opponentName : playerName}
-        cards={scoreInfoSide === 'opponent' ? state.opponentCollected : state.playerCollected}
-        pistiCount={scoreInfoSide === 'opponent' ? state.opponentPisti : state.playerPisti}
-        doublePistiCount={scoreInfoSide === 'opponent' ? state.opponentDoublePisti : state.playerDoublePisti}
+        name={playerName}
+        cards={state.playerCollected}
+        pistiCount={state.playerPisti}
+        doublePistiCount={state.playerDoublePisti}
         onClose={() => setScoreInfoSide(null)}
       />
 

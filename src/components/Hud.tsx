@@ -230,6 +230,23 @@ function HudComponent({
     [openKind, onCooldown, onReaction, closePicker],
   )
 
+  const badgeBody = (
+    <>
+      {showTimerChrome && (
+        <HudTimerRing
+          dashOffset={timer.dashOffset}
+          urgency={timer.urgency}
+          disabled={!timer.active}
+        />
+      )}
+      <RollingScore value={score} className="hud__score" innerRef={scoreRef} />
+      <span className="hud__cards">
+        {cards}
+        <span className="hud__cards-label">kart</span>
+      </span>
+    </>
+  )
+
   return (
     <div className={`hud hud--${side} ${active ? 'hud--active' : ''}`}>
       <div className="hud__id">
@@ -280,25 +297,18 @@ function HudComponent({
         </div>
       )}
 
-      <button
-        type="button"
-        className={`hud__badge${urgencyClass}`}
-        onClick={onScoreClick}
-        aria-label="Puanlamayı göster"
-      >
-        {showTimerChrome && (
-          <HudTimerRing
-            dashOffset={timer.dashOffset}
-            urgency={timer.urgency}
-            disabled={!timer.active}
-          />
-        )}
-        <RollingScore value={score} className="hud__score" innerRef={scoreRef} />
-        <span className="hud__cards">
-          {cards}
-          <span className="hud__cards-label">kart</span>
-        </span>
-      </button>
+      {onScoreClick ? (
+        <button
+          type="button"
+          className={`hud__badge${urgencyClass}`}
+          onClick={onScoreClick}
+          aria-label="Puanlamayı göster"
+        >
+          {badgeBody}
+        </button>
+      ) : (
+        <div className={`hud__badge hud__badge--static${urgencyClass}`}>{badgeBody}</div>
+      )}
     </div>
   )
 }

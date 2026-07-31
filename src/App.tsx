@@ -841,12 +841,15 @@ export default function App() {
       return
     }
 
-    // Forfeits / disconnects — opponent quit mid-hand; award the match win (1–0 etc.)
+    // Forfeits / disconnects — opponent quit mid-hand; award the match win (1–0 etc.).
+    // Do not treat "Masadan kalk" after a completed hand as a forfeit — keep the real result.
+    const completedNormally = mpState.endedReason === 'completed'
     if (
-      mpState.endedReason === 'forfeit_heartbeat' ||
-      mpState.endedReason === 'resign' ||
-      mpState.opponentResigned ||
-      mpState.opponentLeft
+      !completedNormally &&
+      (mpState.endedReason === 'forfeit_heartbeat' ||
+        mpState.endedReason === 'resign' ||
+        mpState.opponentResigned ||
+        mpState.opponentLeft)
     ) {
       const resultId = mpState.matchId
         ? `${mpState.matchId}_${state.gameNumber}_forfeit`
@@ -1980,8 +1983,10 @@ export default function App() {
 
   useEffect(() => {
     if (!showMpEnd || debugMpEnd) return
+    const completedNormally = mpState.endedReason === 'completed'
     const result: 'win' | 'lose' | 'tie' =
-      mpState.opponentResigned || mpState.opponentLeft || mpState.endedReason === 'forfeit_heartbeat'
+      !completedNormally &&
+      (mpState.opponentResigned || mpState.opponentLeft || mpState.endedReason === 'forfeit_heartbeat')
         ? 'win'
         : state.scoreboard
           ? winnerToResult(state.scoreboard.winner)

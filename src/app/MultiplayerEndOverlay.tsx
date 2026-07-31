@@ -135,10 +135,15 @@ export function MultiplayerEndOverlay({
   const { scoreboard, games } = gameState
   const { endedReason, opponentResigned, opponentLeft, localWantsRematch, opponentWantsRematch } = mpState
 
+  // Mid-hand abandon awards a win. Leaving after a completed hand must not.
+  const completedNormally = endedReason === 'completed'
+  const isAbandonForfeit =
+    !completedNormally &&
+    (opponentResigned || opponentLeft || endedReason === 'forfeit_heartbeat' || endedReason === 'resign')
+  const opponentGone = opponentResigned || opponentLeft || endedReason === 'forfeit_heartbeat'
+
   let result: Result = 'tie'
-  const isForfeit =
-    opponentResigned || opponentLeft || endedReason === 'forfeit_heartbeat'
-  if (isForfeit) {
+  if (isAbandonForfeit) {
     result = 'win'
   } else if (scoreboard) {
     result = scoreboard.winner === 'player' ? 'win' : scoreboard.winner === 'opponent' ? 'lose' : 'tie'
@@ -154,7 +159,7 @@ export function MultiplayerEndOverlay({
 
   const reasonLabel = opponentLeft
     ? 'Rakip masadan kalktı'
-    : opponentResigned
+    : isAbandonForfeit && (opponentResigned || endedReason === 'resign')
       ? 'Rakip eli bıraktı'
       : endedReason === 'forfeit_heartbeat'
         ? 'Rakip bağlantısını kaybetti'
@@ -163,8 +168,8 @@ export function MultiplayerEndOverlay({
   const myPts = scoreboard?.player.total ?? 0
   const oppPts = scoreboard?.opponent.total ?? 0
 
-  const rematchDisabled = isForfeit || localWantsRematch
-  const rematchLabel = isForfeit
+  const rematchDisabled = opponentGone || localWantsRematch
+  const rematchLabel = opponentGone
     ? 'Rakip ayrıldı'
     : localWantsRematch
       ? opponentWantsRematch
@@ -291,7 +296,7 @@ export function MultiplayerEndOverlay({
               <button
                 type="button"
                 className={`mp-end__rematch${rematchDisabled ? ' mp-end__rematch--waiting' : ''}${
-                  !isForfeit && opponentWantsRematch && !localWantsRematch ? ' mp-end__rematch--nudge' : ''
+                  !opponentGone && opponentWantsRematch && !localWantsRematch ? ' mp-end__rematch--nudge' : ''
                 }`}
                 onClick={onRematch}
                 disabled={rematchDisabled}

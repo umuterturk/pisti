@@ -21,6 +21,7 @@ import { ScoreInfoDialog } from './components/ScoreInfoDialog'
 import { StartScreen } from './components/StartScreen'
 import { TablePile, type PileVisuals } from './components/TablePile'
 import { ScorePopLayer, type ScorePop } from './components/ScorePopLayer'
+import { TwoVsTwoGame } from './components/TwoVsTwoGame'
 import { NamePromptModal } from './app/NamePromptModal'
 import { FriendMatchOverlay } from './app/FriendMatchOverlay'
 import { GameRequestModal } from './app/GameRequestModal'
@@ -33,7 +34,7 @@ import { usePlayerProfile } from './app/usePlayerProfile'
 import { useUserPresence } from './app/useUserPresence'
 import { getJoinCodeFromUrl, setJoinCodeInUrl, clearGameUrl, pushSoloGameUrl, shareInviteLink } from './app/shareInvite'
 import { subscribeUpdateReady, applyUpdate } from './pwa'
-import { getBot } from './game/bots/registry'
+import { DEFAULT_BOT_ID, getBot } from './game/bots/registry'
 import { runTournament } from './game/bots/selfplay'
 import type { Card as CardType } from './game/cards'
 import { vibrate, TAP, CAPTURE, PISTI, DOUBLE_PISTI, TRIPLE_PISTI, QUAD_PISTI, EXTREME_PISTI, WIN } from './game/haptics'
@@ -394,6 +395,9 @@ export default function App() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [scoreInfoSide, setScoreInfoSide] = useState<Turn | null>(null)
   const [started, setStarted] = useState(() => continuedGame !== null)
+  const [playFormat, setPlayFormat] = useState<'1v1' | '2v2'>('1v1')
+  const [twoVTwoBotId, setTwoVTwoBotId] = useState(DEFAULT_BOT_ID)
+  const [twoVTwoKey, setTwoVTwoKey] = useState(0)
   const [mpOverlayPhase, setMpOverlayPhase] = useState<'idle' | 'creating' | 'sharing' | 'waiting' | 'joining' | 'error'>('idle')
   const [inviteCopied, setInviteCopied] = useState(false)
   const [showCountdown, setShowCountdown] = useState(false)
@@ -645,6 +649,7 @@ export default function App() {
           clearGame()
           clearContinueParam()
         }
+        setPlayFormat('1v1')
         setStarted(false)
       }
     }
@@ -1469,6 +1474,7 @@ export default function App() {
 
   /** Leave after a finished solo hand — result already recorded; do not forfeit. */
   const handleSoloLeave = useCallback(() => {
+    setPlayFormat('1v1')
     track('quit_click', takeEndScreenDecisionParams({
       action: 'leave',
       mode: 'solo',
@@ -1554,6 +1560,7 @@ export default function App() {
         hands_in_session: getHandsInSession(),
       })
       setStarted(false)
+      setPlayFormat('1v1')
       clearGame()
       clearContinueParam()
       resetSessionHands()
@@ -1624,6 +1631,7 @@ export default function App() {
       // blocks every card throw — the "frozen solo game" bug.
       leavingRef.current = false
       resetSessionHands()
+      setPlayFormat('1v1')
       setPlayMode('solo')
       resetTransient()
       chooseBot(botId)
@@ -1643,6 +1651,46 @@ export default function App() {
     },
     [resetTransient, chooseBot],
   )
+
+  const handleStart2v2 = useCallback(
+    (botId: string) => {
+      leavingRef.current = false
+      resetSessionHands()
+      setPlayFormat('2v2')
+      setTwoVTwoBotId(botId)
+      setTwoVTwoKey((k) => k + 1)
+      setPlayMode('solo')
+      resetTransient()
+      setStarted(true)
+      pushSoloGameUrl()
+      noteHandStarted()
+      const bot = getBot(botId)
+      track('game_start', {
+        mode: 'solo',
+        bot_id: bot.id,
+        difficulty: bot.difficulty,
+        is_continue: false,
+        hands_in_session: 0,
+        format: '2v2',
+      })
+      setAnalyticsUserProperties({ last_bot_id: bot.id, preferred_mode: 'solo' })
+    },
+    [resetTransient],
+  )
+
+  const handle2v2Leave = useCallback(() => {
+    leavingRef.current = true
+    track('game_leave', {
+      mode: 'solo',
+      bot_id: twoVTwoBotId,
+      hands_in_session: getHandsInSession(),
+      format: '2v2',
+    })
+    setStarted(false)
+    setPlayFormat('1v1')
+    clearGameUrl()
+    resetSessionHands()
+  }, [twoVTwoBotId])
 
   // ── Play with friend ──────────────────────────────────────────────────────
   const ensureMpUsername = useCallback(async () => {
@@ -2057,10 +2105,12 @@ export default function App() {
   const friendOverlayPhase =
     mpOverlayPhase === 'error' ? 'error' : mpOverlayPhase === 'idle' ? 'waiting' : mpOverlayPhase
 
+  const is2v2 = playFormat === '2v2' && started
+
   return (
     <div
-      className={`game-shell${
-        shaking === 'hard' ? ' game-shell--shake-hard' : shaking === 'soft' ? ' game-shell--shake' : ''
+      className={`game-shell${is2v2 ? ' game-shell--2v2' : ''}${
+        !is2v2 && shaking === 'hard' ? ' game-shell--shake-hard' : !is2v2 && shaking === 'soft' ? ' game-shell--shake' : ''
       }`}
     >
       {!mpHydrated && !showNamePrompt && (
@@ -2077,6 +2127,17 @@ export default function App() {
         </div>
       )}
 
+      {is2v2 && (
+        <TwoVsTwoGame
+          key={twoVTwoKey}
+          botId={twoVTwoBotId}
+          playerName={playerName}
+          onLeave={handle2v2Leave}
+        />
+      )}
+
+      {!is2v2 && (
+      <>
       <div className={`opponent-wrap${dealing || drawFlying ? ' opponent-wrap--dealing' : ''}`} ref={opponentHandRef}>
         <Hud
           side="top"
@@ -2216,6 +2277,8 @@ export default function App() {
           onLeave={handleSoloLeave}
         />
       )}
+      </>
+      )}
 
       {(showMpEnd || debugMpEnd) && (
         <MultiplayerEndOverlay
@@ -2239,6 +2302,7 @@ export default function App() {
         friendsLoading={friendsLoading}
         invitingUid={invitingUid}
         onStart={handleStart}
+        onStart2v2={handleStart2v2}
         onPlayWithFriend={() => setModePicker({ open: true, friend: null })}
         onInviteFriend={(friend) => setModePicker({ open: true, friend })}
         onRemoveFriend={(uid) => void removeFriend(uid)}

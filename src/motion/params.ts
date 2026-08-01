@@ -11,6 +11,15 @@ export const OPP_CARD_WIDTH = 96
 export const OPP_CARD_HEIGHT = 134
 export const OPP_VISIBLE_RATIO = 0.5
 
+// 2v2 non-local seats: full card face (no mid-card crop). HUD floats over the outer edge.
+export const SIDE_OPP_CARD_WIDTH = 82
+export const SIDE_OPP_CARD_HEIGHT = 114
+export const SIDE_OPP_VISIBLE_RATIO = 1
+/** Partner uses the same card size as side opponents. */
+export const PARTNER_OPP_CARD_WIDTH = SIDE_OPP_CARD_WIDTH
+export const PARTNER_OPP_CARD_HEIGHT = SIDE_OPP_CARD_HEIGHT
+export const PARTNER_OPP_VISIBLE_RATIO = SIDE_OPP_VISIBLE_RATIO
+
 export const TOUCH = {
   scale: 1.06,
   lift: -28,

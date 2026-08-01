@@ -1,6 +1,15 @@
-import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
-import { HudTimerRing, useTurnTimer } from '../app/TurnTimer'
-import { RollingScore } from './RollingScore'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+} from 'react'
+import { useTurnTimer, type TimerUrgency } from '../app/TurnTimer'
+import type { HudSide, ReactionPick } from './Hud'
 
 const EMOJIS = ['😭', '😂', '🫨', '🤓', '😒', '🫣'] as const
 const TEXTS = [
@@ -14,42 +23,38 @@ const TEXTS = [
 const REACT_COOLDOWN_MS = 3_000
 const REACT_PICK_MS = 3_000
 
-export type ReactionPick =
-  | { kind: 'emoji'; value: string }
-  | { kind: 'text'; value: string }
+/** Avatar chronometer ring (fits around 48px avatar). */
+const AVATAR_DIAL = 58
+const AVATAR_STROKE = 4
+const AVATAR_RADIUS = (AVATAR_DIAL - AVATAR_STROKE) / 2 - 0.5
+const AVATAR_CIRCUMFERENCE = 2 * Math.PI * AVATAR_RADIUS
+
+export type SeatNumber = 1 | 2 | 3 | 4
+
+interface SeatHudProps {
+  side: HudSide
+  name: string
+  seatNumber: SeatNumber
+  /** Collected pile size (not hand size). */
+  cards: number
+  active: boolean
+  thinking?: boolean
+  avatarUrl?: string
+  /** Landing target for flying score popups. */
+  avatarRef?: RefObject<HTMLSpanElement | null>
+  allowReactions?: boolean
+  onReaction?: (reaction: ReactionPick) => void
+  /** Epoch ms deadline for this seat's turn; 0 = no timer. */
+  turnDeadline?: number
+  onTurnExpire?: () => void
+}
 
 type PickerKind = 'emoji' | 'text'
 
-export type HudSide = 'top' | 'bottom' | 'left' | 'right'
-
-interface HudProps {
-  name: string
-  score: number
-  cards: number
-  active: boolean
-  side: HudSide
-  /** Shows a "thinking…" hint while this side is deciding on a move. */
-  thinking?: boolean
-  /** Attached to the score value so flying score popups know where to land. */
-  scoreRef?: RefObject<HTMLSpanElement | null>
-  /** Opens the scoring legend popup. */
-  onScoreClick?: () => void
-  /** Multiplayer turn deadline (epoch ms). 0 = no timer. */
-  turnDeadline?: number
-  /** Fired once when this side's timer hits zero. */
-  onTurnExpire?: () => void
-  /** Multiplayer mode: show the reaction picker above the score badge. */
-  isMultiplayer?: boolean
-  /** Solo 2v2 (or other): enable reaction pickers without MP. */
-  allowReactions?: boolean
-  /** Force chronometer chrome even without an active deadline. */
-  forceTimerChrome?: boolean
-  /** Callback when user picks an emoji or taunt text. */
-  onReaction?: (reaction: ReactionPick) => void
-  /** Portrait URL (e.g. DiceBear); overflows the tray like the timer badge. */
-  avatarUrl?: string
-  /** Smaller tray for dense 2v2 layout. */
-  compact?: boolean
+function dialStroke(urgency: TimerUrgency): string {
+  if (urgency === 'danger') return '#ff5252'
+  if (urgency === 'warn') return '#ffd54f'
+  return '#7CFF9A'
 }
 
 interface ReactionPickerProps {
@@ -140,34 +145,25 @@ function ReactionPicker({
   )
 }
 
-function HudComponent({
+function SeatHudComponent({
+  side,
   name,
-  score,
+  seatNumber,
   cards,
   active,
-  side,
   thinking,
-  scoreRef,
-  onScoreClick,
+  avatarUrl,
+  avatarRef,
+  allowReactions = false,
+  onReaction,
   turnDeadline = 0,
   onTurnExpire,
-  isMultiplayer = false,
-  allowReactions = false,
-  forceTimerChrome = false,
-  onReaction,
-  avatarUrl,
-  compact = false,
-}: HudProps) {
+}: SeatHudProps) {
   const initial = name.charAt(0).toUpperCase()
+  const showReact = allowReactions && side === 'bottom'
   const timer = useTurnTimer(turnDeadline, onTurnExpire)
-  // Multiplayer keeps the chronometer footprint always; only the arc/urgency
-  // change while counting. Solo stays the compact badge unless a timer runs.
-  const showTimerChrome = forceTimerChrome || isMultiplayer || timer.active
-  const urgencyClass = showTimerChrome
-    ? ` hud__badge--timer${timer.urgency ? ` hud__badge--${timer.urgency}` : ' hud__badge--timer-idle'}`
-    : ''
-
-  const showReact = (isMultiplayer || allowReactions) && side === 'bottom'
+  const showTimer = timer.active
+  const timerDash = showTimer ? AVATAR_CIRCUMFERENCE * (1 - timer.fraction) : 0
 
   const [openKind, setOpenKind] = useState<PickerKind | null>(null)
   const [lastEmoji, setLastEmoji] = useState<string>(EMOJIS[0])
@@ -181,7 +177,6 @@ function HudComponent({
   const cooldownLeft = Math.max(0, cooldownUntil - nowTick)
   const open = openKind !== null
 
-  // Tick while open (pick countdown) or cooling down (UI refresh).
   useEffect(() => {
     if (!showReact) return
     if (!open && cooldownUntil <= Date.now()) return
@@ -199,7 +194,6 @@ function HudComponent({
     }, 280)
   }, [])
 
-  // Auto-close after the pick window.
   useEffect(() => {
     if (!openKind) return
     pickStartedAtRef.current = Date.now()
@@ -244,54 +238,89 @@ function HudComponent({
     [openKind, onCooldown, onReaction, closePicker],
   )
 
-  const badgeBody = (
-    <>
-      {showTimerChrome && (
-        <HudTimerRing
-          dashOffset={timer.dashOffset}
-          urgency={timer.urgency}
-          disabled={!timer.active}
-        />
-      )}
-      <RollingScore value={score} className="hud__score" innerRef={scoreRef} />
-      <span className="hud__cards">
-        {cards}
-        <span className="hud__cards-label">kart</span>
-      </span>
-    </>
-  )
-
   return (
     <div
-      className={`hud hud--${side}${active ? ' hud--active' : ''}${compact ? ' hud--compact' : ''}`}
+      className={`seat-hud seat-hud--${side} seat-hud--seat-${seatNumber}${
+        active ? ' seat-hud--active' : ''
+      }${showTimer && timer.urgency ? ` seat-hud--timer-${timer.urgency}` : ''}`}
     >
-      <div className="hud__id">
-        <div className={`hud__avatar${avatarUrl ? ' hud__avatar--photo' : ''}`}>
+      <div className="seat-hud__avatar-wrap">
+        {showTimer && (
+          <svg
+            className="seat-hud__timer-ring"
+            width={AVATAR_DIAL}
+            height={AVATAR_DIAL}
+            viewBox={`0 0 ${AVATAR_DIAL} ${AVATAR_DIAL}`}
+            aria-hidden
+          >
+            <circle
+              cx={AVATAR_DIAL / 2}
+              cy={AVATAR_DIAL / 2}
+              r={AVATAR_RADIUS}
+              fill="none"
+              stroke="rgba(0,0,0,0.45)"
+              strokeWidth={AVATAR_STROKE + 2}
+            />
+            <circle
+              cx={AVATAR_DIAL / 2}
+              cy={AVATAR_DIAL / 2}
+              r={AVATAR_RADIUS}
+              fill="none"
+              stroke="rgba(255,255,255,0.18)"
+              strokeWidth={AVATAR_STROKE}
+            />
+            <circle
+              className="seat-hud__timer-arc"
+              cx={AVATAR_DIAL / 2}
+              cy={AVATAR_DIAL / 2}
+              r={AVATAR_RADIUS}
+              fill="none"
+              stroke={dialStroke(timer.urgency)}
+              strokeWidth={AVATAR_STROKE}
+              strokeLinecap="round"
+              strokeDasharray={AVATAR_CIRCUMFERENCE}
+              strokeDashoffset={timerDash}
+            />
+          </svg>
+        )}
+        <span
+          ref={avatarRef}
+          className={`seat-hud__avatar${avatarUrl ? ' seat-hud__avatar--photo' : ''}${
+            showTimer ? ' seat-hud__avatar--timed' : ''
+          }${showTimer && timer.urgency ? ` seat-hud__avatar--${timer.urgency}` : ''}`}
+        >
           {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="hud__avatar-img" draggable={false} />
+            <img src={avatarUrl} alt="" className="seat-hud__avatar-img" draggable={false} />
           ) : (
             initial
           )}
+        </span>
+        <span className="seat-hud__badge" aria-hidden>
+          {seatNumber}
+        </span>
+        {showTimer && (
+          <span className="seat-hud__timer-secs" aria-live="polite">
+            {timer.seconds}
+          </span>
+        )}
+      </div>
+
+      <div className="seat-hud__meta">
+        <div className="seat-hud__name-pill">
+          <span className="seat-hud__name">{name}</span>
+          <span
+            className={`seat-hud__dot${thinking ? ' seat-hud__dot--thinking' : ''}`}
+            aria-hidden
+          />
         </div>
-        <div className="hud__name">
-          {name}
-          {thinking ? (
-            <span className="hud__thinking">
-              Düşünüyor
-              <span className="hud__thinking-dots">
-                <span />
-                <span />
-                <span />
-              </span>
-            </span>
-          ) : (
-            active && <span className="hud__turn-dot" />
-          )}
+        <div className="seat-hud__cards">
+          {cards} <span className="seat-hud__cards-label">KART</span>
         </div>
+        {thinking && <span className="seat-hud__thinking">Düşünüyor…</span>}
       </div>
 
       {showReact && (
-        <div className="hud__reacts">
+        <div className="seat-hud__reacts hud__reacts">
           <ReactionPicker
             kind="text"
             open={openKind === 'text'}
@@ -318,21 +347,8 @@ function HudComponent({
           />
         </div>
       )}
-
-      {onScoreClick ? (
-        <button
-          type="button"
-          className={`hud__badge${urgencyClass}`}
-          onClick={onScoreClick}
-          aria-label="Puanlamayı göster"
-        >
-          {badgeBody}
-        </button>
-      ) : (
-        <div className={`hud__badge hud__badge--static${urgencyClass}`}>{badgeBody}</div>
-      )}
     </div>
   )
 }
 
-export const Hud = memo(HudComponent)
+export const SeatHud = memo(SeatHudComponent)

@@ -156,3 +156,37 @@ export function computeScoreboard(
 
   return { player, opponent, winner }
 }
+
+export type TeamId = 'biz' | 'onlar'
+
+export interface TeamScoreboard {
+  biz: SideScore
+  onlar: SideScore
+  winner: TeamId | 'tie'
+}
+
+/** Team-pooled scoreboard for 2v2 (Biz = seats 0+2, Onlar = seats 1+3). */
+export function computeTeamScoreboard(
+  bizCards: Card[],
+  onlarCards: Card[],
+  bizPisti: number,
+  onlarPisti: number,
+  bizDoublePisti = 0,
+  onlarDoublePisti = 0,
+  includeMajority = true,
+): TeamScoreboard {
+  const { player: biz, opponent: onlar, winner } = computeScoreboard(
+    bizCards,
+    onlarCards,
+    bizPisti,
+    onlarPisti,
+    bizDoublePisti,
+    onlarDoublePisti,
+    includeMajority,
+  )
+  return {
+    biz,
+    onlar,
+    winner: winner === 'player' ? 'biz' : winner === 'opponent' ? 'onlar' : 'tie',
+  }
+}

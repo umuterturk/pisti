@@ -20,6 +20,7 @@ interface StartScreenProps {
   friendsLoading: boolean
   invitingUid: string | null
   onStart: (botId: string) => void
+  onStart2v2: (botId: string) => void
   onPlayWithFriend: () => void
   onInviteFriend: (friend: FriendEntry) => void
   onRemoveFriend: (uid: string) => void
@@ -61,6 +62,7 @@ export function StartScreen({
   friendsLoading,
   invitingUid,
   onStart,
+  onStart2v2,
   onPlayWithFriend,
   onInviteFriend,
   onRemoveFriend,
@@ -258,9 +260,10 @@ export function StartScreen({
           <NewGameDialog
             open={pickerOpen}
             defaultBotId={defaultBotId}
-            onStart={(botId) => {
+            onStart={(botId, format) => {
               setPickerOpen(false)
-              onStart(botId)
+              if (format === '2v2') onStart2v2(botId)
+              else onStart(botId)
             }}
             onClose={() => {
               track('bot_picker_cancel', { source: 'home' })

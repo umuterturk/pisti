@@ -116,6 +116,12 @@ export interface Deal {
   deck: Card[]
 }
 
+export interface Deal2v2 {
+  hands: [Card[], Card[], Card[], Card[]]
+  table: Card[]
+  deck: Card[]
+}
+
 // Traditional Pişti opening deal: 4 cards to each player and 4 face-up on the
 // table, with the rest forming the draw pile.
 export function dealNewGame(handSize = 4, tableSize = 4): Deal {
@@ -129,4 +135,17 @@ export function dealNewGame(handSize = 4, tableSize = 4): Deal {
   const deck = shuffled.slice(cursor)
 
   return { playerHand, opponentHand, table, deck }
+}
+
+/** 2v2 opening deal: 4 cards to each of 4 seats, then 4 face-up on the table. */
+export function dealNewGame2v2(handSize = 4, tableSize = 4): Deal2v2 {
+  const shuffled = shuffle(createDeck())
+  let cursor = 0
+  const take = (n: number) => shuffled.slice(cursor, (cursor += n))
+
+  const hands: Deal2v2['hands'] = [take(handSize), take(handSize), take(handSize), take(handSize)]
+  const table = take(tableSize)
+  const deck = shuffled.slice(cursor)
+
+  return { hands, table, deck }
 }
